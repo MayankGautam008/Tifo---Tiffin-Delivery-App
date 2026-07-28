@@ -62,4 +62,8 @@ const SellerSchema = new Schema<ISeller>(
 
 
 
+// ✅ PERFORMANCE: every "who is this logged-in seller" lookup (profile,
+// tiffins, bookings, subscriptions, status update) filters by userId.
+SellerSchema.index({ userId: 1 });
+
 export const Seller = mongoose.model<ISeller>("Seller", SellerSchema);

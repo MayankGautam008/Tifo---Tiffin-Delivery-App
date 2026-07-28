@@ -7,6 +7,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/lib/auth-context";
 import { useCart } from "@/lib/cart-context";
 import { apiRequest, queryClient } from "@/lib/queryClient";
+import { CouponInput } from "@/components/coupon-input";
 import {
   ShoppingCart,
   Plus,
@@ -31,6 +32,18 @@ import {
   Sparkles,
 } from "lucide-react";
 
+interface CouponValidation {
+  isValid: boolean;
+  coupon?: {
+    code: string;
+    discountType: "fixed" | "percentage";
+    discountValue: number;
+    maxDiscountAmount?: number;
+  };
+  discountAmount: number;
+  message: string;
+}
+
 export default function CartPage() {
   const [, setLocation] = useLocation();
   const { toast } = useToast();
@@ -39,13 +52,15 @@ export default function CartPage() {
 
   const [paymentMethod, setPaymentMethod] = useState<"cod" | "upi">("cod");
   const [isPlacingOrder, setIsPlacingOrder] = useState(false);
+  const [appliedCoupon, setAppliedCoupon] = useState<CouponValidation | null>(null);
 
   // Calculate delivery fee and savings
   const deliveryFee = items.length > 0 ? 19 : 0;
   const platformFee = items.length > 0 ? 5 : 0;
   const gst = Math.round(totalAmount * 0.05);
   const savings = Math.round(totalAmount * 0.15);
-  const grandTotal = totalAmount + deliveryFee + platformFee + gst;
+  const couponDiscount = appliedCoupon?.discountAmount || 0;
+  const grandTotal = Math.max(0, totalAmount + deliveryFee + platformFee + gst - couponDiscount);
 
   const handlePlaceOrder = async () => {
     if (!isAuthenticated) {
@@ -64,17 +79,22 @@ export default function CartPage() {
 
     try {
       const payloadItems = items.map(({ cartItemId, tiffinTitle, ...rest }) => rest);
-      await apiRequest("POST", "/api/cart/checkout", {
+      const response = await apiRequest("POST", "/api/cart/checkout", {
         items: payloadItems,
         paymentMethod,
+        couponCode: appliedCoupon?.coupon?.code,
       });
 
-      queryClient.invalidateQueries({ queryKey: ["/api/user/bookings"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/bookings/customer"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/wallet"] });
       clearCart();
+      setAppliedCoupon(null);
+
+      const rewardTokens = response?.rewardTokens || 5;
 
       toast({
         title: paymentMethod === "cod" ? "Order Placed (COD)" : "Order Placed",
-        description: `${items.length} meal${items.length > 1 ? "s" : ""} ordered successfully. The seller has been notified.`,
+        description: `${items.length} meal${items.length > 1 ? "s" : ""} ordered successfully. 🎉 ${rewardTokens} tokens transferred to your wallet!`,
       });
       setLocation("/my-bookings");
     } catch (error: any) {
@@ -292,12 +312,16 @@ export default function CartPage() {
             <div className="lg:col-span-1">
               <Card className="sticky top-24 border-0 shadow-xl rounded-2xl overflow-hidden">
                 {/* Coupon Section */}
-                <div className="p-4 bg-gradient-to-r from-red-50 to-orange-50 border-b border-red-100">
+                <div className="p-4 bg-gradient-to-r from-red-50 to-orange-50 border-b border-red-100 space-y-2">
                   <div className="flex items-center gap-2 text-sm font-semibold text-red-600">
                     <Tag className="w-4 h-4" />
                     <span>Apply Coupon</span>
                   </div>
-                  <p className="text-xs text-gray-500 mt-1">Check offers page for available coupons</p>
+                  <CouponInput
+                    totalAmount={totalAmount}
+                    onCouponApplied={setAppliedCoupon}
+                    onCouponRemoved={() => setAppliedCoupon(null)}
+                  />
                 </div>
 
                 <CardContent className="p-5 space-y-4">
@@ -329,6 +353,17 @@ export default function CartPage() {
                     <span className="text-gray-600">GST (5%)</span>
                     <span className="font-semibold text-gray-800">₹{gst}</span>
                   </div>
+
+                  {/* Coupon Discount */}
+                  {couponDiscount > 0 && (
+                    <div className="flex justify-between items-center text-sm bg-red-50 rounded-lg p-2 -mx-1">
+                      <span className="text-red-700 font-medium flex items-center gap-1">
+                        <Tag className="w-3.5 h-3.5" />
+                        Coupon ({appliedCoupon?.coupon?.code})
+                      </span>
+                      <span className="font-bold text-red-700">-₹{couponDiscount}</span>
+                    </div>
+                  )}
 
                   {/* Savings */}
                   <div className="flex justify-between items-center text-sm bg-green-50 rounded-lg p-2 -mx-1">

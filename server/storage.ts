@@ -56,6 +56,7 @@ export interface IStorage {
   // Tiffin methods
   createTiffin(tiffin: Omit<SharedTiffin, "_id" | "createdAt">): Promise<SharedTiffin>;
   getTiffinById(id: string): Promise<SharedTiffin | null>;
+  getTiffinsByIds(ids: string[]): Promise<Map<string, SharedTiffin>>;
   getTiffinsBySellerId(sellerId: string): Promise<SharedTiffin[]>;
   getAllTiffins(): Promise<SharedTiffin[]>;
   getTiffinsWithActiveSellers(): Promise<TiffinWithSeller[]>;
@@ -66,6 +67,7 @@ export interface IStorage {
   
   // Booking methods
   createBooking(booking: Omit<SharedBooking, "_id" | "createdAt" | "status">): Promise<SharedBooking>;
+  createBookingsBulk(bookings: Omit<SharedBooking, "_id" | "createdAt" | "status">[]): Promise<SharedBooking[]>;
   getBooking(id: string): Promise<SharedBooking | null>;
   getAllBookings(): Promise<SharedBooking[]>;
   updateBooking(id: string, updates: Partial<SharedBooking>): Promise<SharedBooking | null>;
@@ -162,13 +164,15 @@ async updateSeller(sellerId: string, updateData: Partial<SharedSeller>): Promise
 }
 
   async getUserByEmail(email: string): Promise<SharedUser | null> {
-    const user = await User.findOne({ email });
+    // ✅ PERFORMANCE: .lean() skips hydrating a full Mongoose document since
+    // this is a plain read — callers only ever read fields off the result.
+    const user = await User.findOne({ email }).lean();
     return toObject<SharedUser>(user);
   }
 
   async getUserById(id: string): Promise<SharedUser | null> {
     if (!mongoose.Types.ObjectId.isValid(id)) return null;
-    const user = await User.findById(id);
+    const user = await User.findById(id).lean();
     return toObject<SharedUser>(user);
   }
 
@@ -181,18 +185,18 @@ async updateSeller(sellerId: string, updateData: Partial<SharedSeller>): Promise
 
   async getSellerByUserId(userId: string): Promise<SharedSeller | null> {
     if (!mongoose.Types.ObjectId.isValid(userId)) return null;
-    const seller = await Seller.findOne({ userId });
+    const seller = await Seller.findOne({ userId }).lean();
     return toObject<SharedSeller>(seller);
   }
 
   async getSellerById(id: string): Promise<SharedSeller | null> {
     if (!mongoose.Types.ObjectId.isValid(id)) return null;
-    const seller = await Seller.findById(id);
+    const seller = await Seller.findById(id).lean();
     return toObject<SharedSeller>(seller);
   }
 
   async getAllSellers(): Promise<SharedSeller[]> {
-    const sellers = await Seller.find().sort({ createdAt: -1 });
+    const sellers = await Seller.find().sort({ createdAt: -1 }).lean();
     return sellers.map(seller => toObject<SharedSeller>(seller));
   }
 
@@ -268,31 +272,40 @@ async updateSeller(sellerId: string, updateData: Partial<SharedSeller>): Promise
       console.log("❌ Invalid tiffin ID:", id);
       return null;
     }
-    const tiffin = await Tiffin.findById(id);
+    const tiffin = await Tiffin.findById(id).lean();
     if (!tiffin) {
       console.log("❌ Tiffin not found with ID:", id);
       return null;
     }
     
     const result = toObject<SharedTiffin>(tiffin);
-    console.log("✅ Found tiffin:", {
-      id: result._id,
-      title: result.title,
-      addOnsCount: result.addOns?.length || 0,
-      weeklyCustomizationsCount: result.weeklyCustomizations?.length || 0
-    });
-    
     return result;
   }
 
+  // ✅ PERFORMANCE: batch version of getTiffinById — checkout used to await
+  // getTiffinById() once per cart line sequentially (N round trips). This
+  // fetches every needed tiffin in a single query and returns a map so the
+  // caller can look each one up in memory instead.
+  async getTiffinsByIds(ids: string[]): Promise<Map<string, SharedTiffin>> {
+    const validIds = Array.from(new Set(ids.filter(id => mongoose.Types.ObjectId.isValid(id))));
+    if (validIds.length === 0) return new Map();
+    const tiffins = await Tiffin.find({ _id: { $in: validIds } }).lean();
+    const map = new Map<string, SharedTiffin>();
+    for (const tiffin of tiffins) {
+      const obj = toObject<SharedTiffin>(tiffin);
+      map.set(obj._id, obj);
+    }
+    return map;
+  }
+
   async getAllTiffins(): Promise<SharedTiffin[]> {
-    const tiffins = await Tiffin.find().sort({ createdAt: -1 });
+    const tiffins = await Tiffin.find().sort({ createdAt: -1 }).lean();
     return tiffins.map(tiffin => toObject<SharedTiffin>(tiffin));
   }
 
   async getTiffinsBySellerId(sellerId: string): Promise<SharedTiffin[]> {
     if (!mongoose.Types.ObjectId.isValid(sellerId)) return [];
-    const tiffins = await Tiffin.find({ sellerId }).sort({ createdAt: -1 });
+    const tiffins = await Tiffin.find({ sellerId }).sort({ createdAt: -1 }).lean();
     return tiffins.map(tiffin => toObject<SharedTiffin>(tiffin));
   }
 
@@ -302,7 +315,8 @@ async updateSeller(sellerId: string, updateData: Partial<SharedSeller>): Promise
         path: 'sellerId',
         match: { status: 'active' }
       })
-      .sort({ createdAt: -1 });
+      .sort({ createdAt: -1 })
+      .lean();
     
     return tiffins
       .filter(tiffin => (tiffin as any).sellerId !== null)
@@ -322,7 +336,7 @@ async updateSeller(sellerId: string, updateData: Partial<SharedSeller>): Promise
       return null;
     }
     
-    const tiffin = await Tiffin.findById(id).populate('sellerId');
+    const tiffin = await Tiffin.findById(id).populate('sellerId').lean();
     if (!tiffin) {
       console.log("❌ Tiffin not found with ID:", id);
       return null;
@@ -335,14 +349,6 @@ async updateSeller(sellerId: string, updateData: Partial<SharedSeller>): Promise
     
     const tiffinObj = toObject<SharedTiffin>(tiffin);
     const sellerObj = toObject<SharedSeller>((tiffin as any).sellerId);
-    
-    console.log("✅ Found tiffin with seller:", {
-      tiffinId: tiffinObj._id,
-      sellerId: sellerObj._id,
-      sellerStatus: sellerObj.status,
-      addOnsCount: tiffinObj.addOns?.length || 0,
-      weeklyCustomizationsCount: tiffinObj.weeklyCustomizations?.length || 0
-    });
     
     return {
       ...tiffinObj,
@@ -422,20 +428,48 @@ async updateSeller(sellerId: string, updateData: Partial<SharedSeller>): Promise
     return result;
   }
 
+  // ✅ PERFORMANCE: cart checkout can create several bookings at once (one
+  // per cart line, possibly across multiple sellers). Previously each one
+  // was created with its own sequential `.save()` await — N round trips to
+  // Mongo before the order could be confirmed. insertMany() writes them all
+  // in a single round trip, which is what actually makes "place order" feel
+  // instant once the cart has more than one item.
+  async createBookingsBulk(
+    bookingsData: Omit<SharedBooking, "_id" | "createdAt" | "status">[]
+  ): Promise<SharedBooking[]> {
+    if (bookingsData.length === 0) return [];
+
+    const docs = bookingsData.map((bookingData) => ({
+      ...bookingData,
+      status: "Pending" as const,
+      addOns: bookingData.addOns || [],
+      weeklyCustomizations: bookingData.weeklyCustomizations || [],
+      selectedDays: bookingData.selectedDays || [],
+      deliverySchedule: generateDeliverySchedule(
+        bookingData.bookingType,
+        bookingData.date as any,
+        bookingData.selectedDays || []
+      ),
+    }));
+
+    const created = await Booking.insertMany(docs);
+    return created.map((booking) => toObject<SharedBooking>(booking));
+  }
+
   async getBooking(id: string): Promise<SharedBooking | null> {
     if (!mongoose.Types.ObjectId.isValid(id)) return null;
-    const booking = await Booking.findById(id);
+    const booking = await Booking.findById(id).lean();
     return toObject<SharedBooking>(booking);
   }
 
   async getAllBookings(): Promise<SharedBooking[]> {
-    const bookings = await Booking.find().sort({ createdAt: -1 });
+    const bookings = await Booking.find().sort({ createdAt: -1 }).lean();
     return bookings.map(booking => toObject<SharedBooking>(booking));
   }
 
   async updateBooking(id: string, updates: Partial<SharedBooking>): Promise<SharedBooking | null> {
     if (!mongoose.Types.ObjectId.isValid(id)) return null;
-    const booking = await Booking.findByIdAndUpdate(id, updates, { new: true });
+    const booking = await Booking.findByIdAndUpdate(id, updates, { new: true }).lean();
     return toObject<SharedBooking>(booking);
   }
 
@@ -443,7 +477,8 @@ async updateSeller(sellerId: string, updateData: Partial<SharedSeller>): Promise
     const bookings = await Booking.find({ customerEmail: email })
       .populate('tiffinId')
       .populate('sellerId')
-      .sort({ createdAt: -1 });
+      .sort({ createdAt: -1 })
+      .lean();
     
     return bookings.map(booking => {
       const bookingObj = toObject<SharedBooking>(booking);
@@ -532,7 +567,8 @@ async updateSeller(sellerId: string, updateData: Partial<SharedSeller>): Promise
     })
       .populate('tiffinId')
       .populate('sellerId')
-      .sort({ createdAt: -1 });
+      .sort({ createdAt: -1 })
+      .lean();
 
     return bookings.map(booking => {
       const bookingObj = toObject<SharedBooking>(booking);
@@ -557,7 +593,8 @@ async updateSeller(sellerId: string, updateData: Partial<SharedSeller>): Promise
     })
       .populate('tiffinId')
       .populate('sellerId')
-      .sort({ createdAt: -1 });
+      .sort({ createdAt: -1 })
+      .lean();
 
     return bookings.map(booking => {
       const bookingObj = toObject<SharedBooking>(booking);
@@ -578,7 +615,8 @@ async updateSeller(sellerId: string, updateData: Partial<SharedSeller>): Promise
     const bookings = await Booking.find({ sellerId })
       .populate('tiffinId')
       .populate('sellerId')
-      .sort({ createdAt: -1 });
+      .sort({ createdAt: -1 })
+      .lean();
     
     return bookings.map(booking => {
       const bookingObj = toObject<SharedBooking>(booking);
@@ -597,7 +635,8 @@ async updateSeller(sellerId: string, updateData: Partial<SharedSeller>): Promise
     const bookings = await Booking.find()
       .populate('tiffinId')
       .populate('sellerId')
-      .sort({ createdAt: -1 });
+      .sort({ createdAt: -1 })
+      .lean();
     
     return bookings.map(booking => {
       const bookingObj = toObject<SharedBooking>(booking);
@@ -631,7 +670,7 @@ async updateSeller(sellerId: string, updateData: Partial<SharedSeller>): Promise
 
   async getCouponById(id: string): Promise<SharedCoupon | null> {
     if (!mongoose.Types.ObjectId.isValid(id)) return null;
-    const coupon = await Coupon.findById(id);
+    const coupon = await Coupon.findById(id).lean();
     return toObject<SharedCoupon>(coupon);
   }
 
@@ -639,12 +678,12 @@ async updateSeller(sellerId: string, updateData: Partial<SharedSeller>): Promise
     const coupon = await Coupon.findOne({ 
       code: code.toUpperCase().trim(),
       isActive: true 
-    });
+    }).lean();
     return toObject<SharedCoupon>(coupon);
   }
 
   async getAllCoupons(): Promise<SharedCoupon[]> {
-    const coupons = await Coupon.find().sort({ createdAt: -1 });
+    const coupons = await Coupon.find().sort({ createdAt: -1 }).lean();
     return coupons.map(coupon => toObject<SharedCoupon>(coupon));
   }
 
@@ -1049,10 +1088,11 @@ async updateSeller(sellerId: string, updateData: Partial<SharedSeller>): Promise
       suspendedSellers,
       totalTiffins,
       totalBookings,
-      bookings,
+      revenueAgg,
       totalCoupons,
       activeCoupons,
-      platformAverageRating
+      platformAverageRating,
+      couponUsage
     ] = await Promise.all([
       Seller.countDocuments(),
       Seller.countDocuments({ status: 'active' }),
@@ -1060,19 +1100,16 @@ async updateSeller(sellerId: string, updateData: Partial<SharedSeller>): Promise
       Seller.countDocuments({ status: 'suspended' }),
       Tiffin.countDocuments(),
       Booking.countDocuments(),
-      Booking.find(),
+      // ✅ PERFORMANCE: sum totalPrice in the database instead of pulling every
+      // booking document into memory just to add up one field.
+      Booking.aggregate([{ $group: { _id: null, total: { $sum: "$totalPrice" } } }]),
       Coupon.countDocuments(),
       Coupon.countDocuments({ isActive: true }),
-      this.getPlatformAverageRating()
+      this.getPlatformAverageRating(),
+      Coupon.aggregate([{ $group: { _id: null, totalUsage: { $sum: "$usedCount" } } }])
     ]);
 
-    const totalRevenue = bookings.reduce((sum, booking) => {
-      return sum + (booking.totalPrice || 0);
-    }, 0);
-
-    const couponUsage = await Coupon.aggregate([
-      { $group: { _id: null, totalUsage: { $sum: "$usedCount" } } }
-    ]);
+    const totalRevenue = revenueAgg[0]?.total || 0;
 
     return {
       totalSellers,

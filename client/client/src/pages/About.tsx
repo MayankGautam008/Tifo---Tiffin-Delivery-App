@@ -65,7 +65,7 @@ export default function About() {
     {
       name: "Shashank Pandey",
       role: "Founder & CEO",
-      description: "Manages all operations of Tiffo and handles overall growth strategies & business development.",
+      description: "Manages all operations of Tifo and handles overall growth strategies & business development.",
       image: "https://image2url.com/images/1763915469075-3a182610-3895-46a8-85fc-737e975f2256.png",
       socials: [
         { icon: Linkedin, url: "https://linkedin.com/in/abhayrajput" },
@@ -127,7 +127,7 @@ export default function About() {
         <span className="text-white font-bold">T</span>
       </div>
       <div>
-        <h1 className="text-lg font-bold text-gray-900">About Tiffo</h1>
+        <h1 className="text-lg font-bold text-gray-900">About Tifo</h1>
       </div>
     </div>
   </div>
@@ -230,7 +230,7 @@ export default function About() {
           {/* Description for each founder */}
           {member.name === "Shashank Pandey" && (
             <p className="text-gray-600 text-sm mb-4 leading-relaxed">
-              Manages all operations of Tiffo and handles overall growth strategies & business development.
+              Manages all operations of Tifo and handles overall growth strategies & business development.
             </p>
           )}
           
@@ -263,18 +263,18 @@ export default function About() {
         </div>
       </div>
 
-      {/* About Tiffo Section */}
+      {/* About Tifo Section */}
       <div className="py-8 bg-gray-50">
         <div className="max-w-md mx-auto px-4">
           <ScrollAnimation>
             <div className="text-center">
-              <h2 className="text-xl font-bold text-gray-900 mb-4">About Tiffo</h2>
+              <h2 className="text-xl font-bold text-gray-900 mb-4">About Tifo</h2>
               <div className="bg-white rounded-2xl p-6 border border-gray-200">
                 <div className="w-12 h-12 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
                   <Star className="w-6 h-6 text-red-600" />
                 </div>
                 <p className="text-gray-700 text-sm leading-relaxed mb-4">
-                  Tiffo is India's first and most trusted tiffin delivery platform, connecting you with verified home chefs who serve authentic, homemade meals with love and quality.
+                  Tifo is India's first and most trusted tiffin delivery platform, connecting you with verified home chefs who serve authentic, homemade meals with love and quality.
                 </p>
                 <p className="text-gray-700 text-sm leading-relaxed">
                   We deliver happiness in every tiffin with fast service, flexible subscriptions, and exciting rewards for our loyal customers.
@@ -332,7 +332,7 @@ export default function About() {
             <div className="w-6 h-6 bg-red-600 rounded flex items-center justify-center">
               <span className="text-white font-bold text-xs">T</span>
             </div>
-            <span className="font-bold">Tiffo</span>
+            <span className="font-bold">Tifo</span>
           </div>
           <p className="text-gray-400 text-xs mb-4">
             India's 1st Tiffin Delivery App
@@ -349,7 +349,7 @@ export default function About() {
             ))}
           </div>
           <p className="text-gray-500 text-xs">
-            &copy; 2025 Tiffo. All rights reserved.
+            &copy; 2025 Tifo. All rights reserved.
           </p>
         </div>
       </div>

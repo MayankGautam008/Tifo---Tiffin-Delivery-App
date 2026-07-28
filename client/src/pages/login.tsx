@@ -10,6 +10,7 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/lib/auth-context";
 import { apiRequest } from "@/lib/queryClient";
+import { markSellerLandedOnDashboard } from "@/lib/seller-landing";
 import { loginSchema, type LoginCredentials, type AuthResponse } from "@shared/schema";
 import { UtensilsCrossed, Eye, EyeOff, ArrowLeft, Star, Truck, Clock, ShieldCheck } from "lucide-react";
 
@@ -51,6 +52,11 @@ export default function Login() {
         if (data.user.role === "admin") {
           setLocation("/admin");
         } else if (data.user.role === "seller") {
+          // ✅ This login already sends the seller to their Dashboard, so
+          // mark it done for this browser session — otherwise the first
+          // time they click "Home" from the navbar, Home's own redirect
+          // (see home.tsx) would immediately bounce them right back.
+          markSellerLandedOnDashboard();
           setLocation("/seller/dashboard");
         } else {
           setLocation("/");

@@ -15,6 +15,52 @@ import {
 } from './emailService';
 import { withLiveStatus } from "./services/deliveryScheduleService";
 import { registerWalletRoutes } from "./walletRoutes";
+import {
+  initSocket,
+  emitNewOrderToSeller,
+  emitOrderStatusToCustomer,
+  emitOrderUpdateToSeller,
+} from "./socket";
+import { User } from "./models/User";
+import { WalletTransaction } from "./models/WalletTransaction";
+
+// ============================================================
+// 🎁 ORDER REWARD TOKENS
+// Har successful order pe customer ko automatically 5 tokens
+// (wallet balance) credit ho jaate hain — jaise daily order points.
+// Yeh function har order-creation success path ke baad call hota hai.
+// ============================================================
+const ORDER_REWARD_TOKENS = 5;
+
+async function creditOrderRewardTokens(
+  customerId: string,
+  reason: string
+): Promise<number | null> {
+  try {
+    const user = await User.findById(customerId);
+    if (!user) return null;
+
+    user.walletBalance = (user.walletBalance || 0) + ORDER_REWARD_TOKENS;
+    await user.save();
+
+    await WalletTransaction.create({
+      customerId: user._id,
+      type: "credit",
+      amount: ORDER_REWARD_TOKENS,
+      balanceAfter: user.walletBalance,
+      reason,
+      createdBy: user._id, // system reward, tied to the customer's own order
+    });
+
+    console.log(`🎁 ${ORDER_REWARD_TOKENS} reward tokens credited to user ${customerId} — new balance: ${user.walletBalance}`);
+    return user.walletBalance;
+  } catch (error) {
+    // Reward credit kabhi bhi order placement ko fail nahi karna chahiye —
+    // isliye yeh sirf log karta hai, throw nahi karta.
+    console.warn("⚠️ Failed to credit order reward tokens:", error);
+    return null;
+  }
+}
 
 
 // ✅ ADD THESE IMPORTS AT THE TOP
@@ -66,6 +112,126 @@ export async function verifyTurnstile(token: string): Promise<boolean> {
   }
 }
 
+// ✅ SECURITY FIX: authoritative, server-side price calculation for cart
+// checkout. Previously the checkout route trusted basePrice/addOnsPrice/
+// deliveryCharge/discountAmount/totalPrice exactly as sent by the client,
+// which meant anyone could edit the request body (devtools/Postman/etc.)
+// and place an order for ₹1. This function recomputes every price field
+// from data the server already trusts — the tiffin document in the DB —
+// and ignores the client-supplied price fields entirely. Only quantity,
+// bookingType, selectedDays, and which add-ons/customizations were *picked*
+// are taken from the client; every ₹ amount is derived here. Coupon
+// discount is intentionally NOT handled in here — it's applied once per
+// seller order (see calculateSellerOrderDiscount below), not once per item,
+// so a single cart-level coupon can't be multiplied across every line.
+function calculateItemBasePricing(
+  tiffin: any,
+  item: {
+    bookingType: "single" | "trial" | "weekly" | "monthly";
+    quantity: number;
+    selectedDays?: string[];
+    addOns?: Array<{ name: string; quantity: number }>;
+    weeklyCustomizations?: Array<{ name: string; days?: string[] }>;
+  }
+) {
+  const quantity = Math.max(1, Number(item.quantity) || 1);
+  const selectedDays = Array.isArray(item.selectedDays) ? item.selectedDays : [];
+
+  // Base price — always derived from the tiffin's own DB price for the
+  // chosen booking type, never from client input.
+  let basePrice = 0;
+  switch (item.bookingType) {
+    case "single":
+      basePrice = (tiffin.price || 0) * quantity;
+      break;
+    case "trial":
+      basePrice = (tiffin.trialPrice || 99) * quantity;
+      break;
+    case "weekly":
+      basePrice = (tiffin.price || 0) * quantity * Math.max(1, selectedDays.length);
+      break;
+    case "monthly":
+      basePrice = (tiffin.monthlyPrice || 2000) * quantity;
+      break;
+    default:
+      basePrice = 0;
+  }
+
+  // Add-ons — only ones that exist in the tiffin's own add-on catalog count,
+  // and always at the seller-set catalog price, never the client price.
+  const catalogAddOns = new Map((tiffin.addOns || []).map((a: any) => [a.name, a]));
+  const validatedAddOns: Array<{ name: string; price: number; quantity: number }> = [];
+  let addOnsPrice = 0;
+  for (const requested of item.addOns || []) {
+    const catalogAddOn: any = catalogAddOns.get(requested.name);
+    if (!catalogAddOn || catalogAddOn.available === false) continue;
+    const qty = Math.max(0, Math.floor(Number(requested.quantity) || 0));
+    if (qty === 0) continue;
+    validatedAddOns.push({ name: catalogAddOn.name, price: catalogAddOn.price, quantity: qty });
+    addOnsPrice += catalogAddOn.price * qty;
+  }
+
+  // Weekly customizations — same idea: catalog price + catalog day list,
+  // never the client's version of either.
+  const catalogCustoms = new Map((tiffin.weeklyCustomizations || []).map((c: any) => [c.name, c]));
+  const validatedWeeklyCustomizations: Array<{ name: string; price: number; days: string[] }> = [];
+  let weeklyCustomizationsPrice = 0;
+  for (const requested of item.weeklyCustomizations || []) {
+    const catalogCustom: any = catalogCustoms.get(requested.name);
+    if (!catalogCustom || catalogCustom.available === false) continue;
+    const applicableDays = (catalogCustom.days || []).filter((d: string) => selectedDays.includes(d));
+    if (applicableDays.length === 0) continue;
+    validatedWeeklyCustomizations.push({ name: catalogCustom.name, price: catalogCustom.price, days: applicableDays });
+    weeklyCustomizationsPrice += catalogCustom.price * applicableDays.length;
+  }
+
+  // Delivery charge — fixed server-side rule, not a client-supplied number.
+  const deliveryCharge =
+    tiffin.serviceType === "tiffin"
+      ? item.bookingType === "trial" || item.bookingType === "single"
+        ? 19
+        : 0
+      : 19;
+
+  const subtotal = basePrice + addOnsPrice + weeklyCustomizationsPrice;
+
+  return {
+    basePrice,
+    addOnsPrice,
+    deliveryCharge,
+    subtotal,
+    validatedAddOns,
+    validatedWeeklyCustomizations,
+  };
+}
+
+// ✅ NEW: cart-level coupon support. One coupon code applies once to a
+// whole seller order (not once per line item — that would multiply the
+// discount by however many items are in the cart). Validates via the
+// existing storage.validateCoupon() (checks expiry/usage-limit/min-order/
+// max-discount) against the seller-order's real subtotal, then splits the
+// resulting discount across items proportionally to what each item costs,
+// so per-item totals still add up to the order total.
+async function calculateSellerOrderDiscount(
+  couponCode: string | undefined,
+  itemSubtotals: number[]
+): Promise<number[]> {
+  const orderSubtotal = itemSubtotals.reduce((sum, s) => sum + s, 0);
+  if (!couponCode || orderSubtotal <= 0) return itemSubtotals.map(() => 0);
+
+  const validation = await storage.validateCoupon(couponCode, orderSubtotal);
+  if (!validation.isValid || validation.discountAmount <= 0) {
+    return itemSubtotals.map(() => 0);
+  }
+
+  const totalDiscount = Math.min(validation.discountAmount, orderSubtotal);
+  const shares = itemSubtotals.map((s) => Math.floor((totalDiscount * s) / orderSubtotal));
+  // Rounding remainder (Math.floor on every share can leave a few paise
+  // unassigned) goes on the first item so the sum always matches exactly.
+  const assigned = shares.reduce((sum, s) => sum + s, 0);
+  if (shares.length > 0) shares[0] += totalDiscount - assigned;
+  return shares;
+}
 
 
 // Create default admin account - runs on server state
@@ -112,6 +278,75 @@ async function sendEmailSafely(emailFunction: () => Promise<void>, context: stri
     console.warn(`⚠️ Failed to send ${context} email:`, error.message);
     // Don't throw error - continue with the main operation
   }
+}
+
+// ✅ PERFORMANCE: cart checkout notifications (seller email, customer email)
+// are outbound SMTP calls that can take seconds. They must never block the
+// "place order" response, so checkout calls this AFTER responding to the
+// customer, without awaiting it. Each seller's notification is still
+// best-effort/isolated — one seller's email failing never affects another's,
+// and never affects the bookings that were already created.
+async function notifySellersForCartOrders(
+  sellerOrders: Array<{ sellerId: string; orderId: string; bookings: any[] }>,
+  user: { name: string; email: string; phone: string; address: string; city: string }
+): Promise<void> {
+  await Promise.all(
+    sellerOrders.map(async (order) => {
+      try {
+        const seller = await storage.getSellerById(order.sellerId);
+        if (!seller) return;
+        const sellerUser = await storage.getUserById(seller.userId);
+        if (!sellerUser) return;
+
+        const orderTotal = order.bookings.reduce((sum: number, b: any) => sum + (b.totalPrice || 0), 0);
+        const orderLabel = `Cart order (${order.bookings.length} item${order.bookings.length > 1 ? "s" : ""})`;
+        const sellerDashboardLink = `${process.env.FRONTEND_URL || 'http://localhost:5000'}/seller/dashboard`;
+
+        await sendOrderNotificationToSeller(sellerUser.email, {
+          customerName: user.name,
+          customerEmail: user.email,
+          customerPhone: user.phone,
+          customerAddress: user.address,
+          customerCity: user.city,
+          tiffinTitle: orderLabel,
+          bookingType: "single",
+          quantity: order.bookings.length,
+          totalPrice: orderTotal,
+          deliveryDate: order.bookings[0].date,
+          slot: order.bookings[0].slot,
+          deliveryAddress: user.address,
+          orderId: order.orderId.slice(-8),
+          discountAmount: 0,
+          couponCode: null,
+          subtotal: orderTotal,
+        }, sellerDashboardLink);
+
+        // Customer confirmation for this seller's portion of the cart.
+        await sendEmailSafely(
+          () => sendBookingConfirmationToCustomer(
+            user.email,
+            user.name,
+            orderLabel,
+            seller.shopName || sellerUser.name,
+            seller.contactNumber,
+            order.bookings[0].date,
+            order.bookings[0].slot,
+            order.bookings.length,
+            orderTotal,
+            0,
+            null,
+            [],
+            [],
+            [],
+            ""
+          ),
+          `booking confirmation to customer (seller ${order.sellerId})`
+        );
+      } catch (notifyError) {
+        console.warn(`⚠️ Order notification failed for seller ${order.sellerId}, but bookings were created:`, notifyError);
+      }
+    })
+  );
 }
 
 // ✅ PRODUCTION READY TOP RATED ROUTES
@@ -203,6 +438,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       try {
+        // ⚠️ Turnstile enforcement disabled for now (was rejecting
+        // legitimate register attempts — client-side widget/token wiring
+        // needs to be fixed before this can be turned back on). The
+        // token-stripping bypass middleware stays removed either way, so
+        // once the client sends a real token this can just be re-enabled.
+        // if (process.env.TURNSTILE_SECRET_KEY) {
+        //   const captchaOk = await verifyTurnstile(req.body.turnstileToken);
+        //   if (!captchaOk) {
+        //     return res.status(400).json({ message: "Captcha verification failed. Please try again." });
+        //   }
+        // }
+
         const { name, email, phone, password, role, address, city } = req.body;
 
         const existingUser = await storage.getUserByEmail(email);
@@ -236,7 +483,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
 
         const token = jwt.sign({ userId: user._id, role: user.role }, getJWTSecret(), {
-          expiresIn: "7d",
+          // ✅ Long-lived session token — customers/sellers should stay
+          // logged in until they explicitly log out, not get silently
+          // signed out after a week.
+          expiresIn: "365d",
         });
 
         res.status(201).json({
@@ -260,9 +510,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
 
     try {
-      const { email, password} = req.body;
+      // ⚠️ Turnstile enforcement disabled for now — see the matching note
+      // on the register route above.
+      // if (process.env.TURNSTILE_SECRET_KEY) {
+      //   const captchaOk = await verifyTurnstile(req.body.turnstileToken);
+      //   if (!captchaOk) {
+      //     return res.status(400).json({ message: "Captcha verification failed. Please try again." });
+      //   }
+      // }
 
-       
+      const { email, password} = req.body;
 
       // Get user from database
       const user = await storage.getUserByEmail(email);
@@ -308,7 +565,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         userId: user._id, 
         role: userResponse.role 
       }, getJWTSecret(), {
-        expiresIn: "7d",
+        // ✅ Long-lived session token — see registration route above for why.
+        expiresIn: "365d",
       });
 
       res.json({
@@ -756,6 +1014,15 @@ app.post("/api/orders/calculate-price", authenticateToken, async (req: AuthReque
       if (tiffin) {
         const seller = await storage.getSellerById(tiffin.sellerId);
         if (seller) {
+          // ✅ REAL-TIME: push the new order to the Seller Dashboard instantly.
+          // Kept outside the email/notification logic below so a slow or
+          // failing email send never delays or blocks the live update.
+          try {
+            emitNewOrderToSeller(seller._id, booking);
+          } catch (socketError) {
+            console.warn("⚠️ Real-time new-order emit failed:", socketError);
+          }
+
           const sellerUser = await storage.getUserById(seller.userId);
           if (sellerUser) {
             
@@ -826,8 +1093,19 @@ try {
     } catch (emailError) {
       console.warn("⚠️ Email sending failed, but booking was created:", emailError);
     }
-    
-    res.status(201).json(booking);
+
+    // 🎁 Order successful — automatically credit 5 reward tokens to the customer's wallet.
+    const newWalletBalance = await creditOrderRewardTokens(
+      req.userId!,
+      `Order reward — ${(booking as any)._id?.toString().slice(-8) || ""}`
+    );
+
+    res.status(201).json({
+      ...booking,
+      rewardTokens: ORDER_REWARD_TOKENS,
+      walletBalance: newWalletBalance,
+      message: `Order placed successfully! 5 tokens transferred to your wallet 🎉`,
+    });
   } catch (error: any) {
     console.error("❌ Error creating booking:", error);
     res.status(500).json({ message: error.message });
@@ -1022,13 +1300,14 @@ try {
     }
   );
 
-  // ✅ NEW: Cart checkout — turns every item in the cart into a booking in one payout.
-  // Platform has a single meal provider, so every item shares the same sellerId.
-  // Each cart item becomes its own Booking row (same shape as /api/bookings) tagged
-  // with a shared cartOrderId, so they all land in the seller dashboard together.
+  // ✅ Cart checkout — a single cart can hold meals from multiple different
+  // sellers (and multiple meals from the same seller). Checkout automatically
+  // groups the cart items by seller and creates a SEPARATE order (its own
+  // cartOrderId) per seller, so every seller only ever gets notified about —
+  // and only ever sees in their dashboard — their own items.
   app.post("/api/cart/checkout", authenticateToken, async (req: AuthRequest, res) => {
     try {
-      const { items, paymentMethod } = req.body as {
+      const { items, paymentMethod, couponCode } = req.body as {
         items: Array<{
           tiffinId: string;
           sellerId: string;
@@ -1045,9 +1324,11 @@ try {
           weeklyCustomizations?: any[];
           selectedDays?: string[];
           customization?: string;
-          couponCode?: string;
         }>;
         paymentMethod: "cod" | "upi";
+        // ✅ NEW: one coupon code for the whole cart (applied once per
+        // seller-order below), instead of a couponCode per line item.
+        couponCode?: string;
       };
 
       if (!Array.isArray(items) || items.length === 0) {
@@ -1060,107 +1341,175 @@ try {
       }
 
       const finalPaymentMethod = paymentMethod === "upi" ? "upi" : "cod";
-      const cartOrderId = new ObjectId().toString();
+      const trimmedCouponCode = couponCode && couponCode.trim() ? couponCode.trim() : undefined;
 
-      const createdBookings = [];
+      // ✅ PERFORMANCE: one query for every tiffin in the cart instead of
+      // awaiting storage.getTiffinById() once per line sequentially — this
+      // used to be the biggest source of latency on multi-item carts.
+      const tiffinsById = await storage.getTiffinsByIds(items.map((i) => i.tiffinId));
+
+      // ✅ SECURITY: reject checkout if any cart item points at a tiffin
+      // that doesn't exist (deleted/invalid id) instead of silently trusting
+      // whatever price the client sent for it.
+      const invalidItem = items.find((i) => !tiffinsById.has(i.tiffinId));
+      if (invalidItem) {
+        return res.status(400).json({
+          message: "One or more items in your cart are no longer available. Please refresh your cart and try again.",
+        });
+      }
+
+      // Resolve each item's real seller from the tiffin itself (not the
+      // client-supplied sellerId) so a spoofed/stale value on the client can
+      // never misroute an order or its email to the wrong seller.
+      const itemsBySeller = new Map<string, typeof items>();
       for (const item of items) {
-        const bookingData = {
-          tiffinId: item.tiffinId,
-          sellerId: item.sellerId,
-          customerId: req.userId,
-          customerName: user.name,
-          customerEmail: user.email,
-          customerPhone: user.phone,
-          customerAddress: user.address,
-          customerCity: user.city,
-          deliveryAddress: user.address,
-          date: item.date,
-          slot: item.slot,
-          quantity: item.quantity,
-          bookingType: item.bookingType,
-          basePrice: item.basePrice || 0,
-          addOnsPrice: item.addOnsPrice || 0,
-          deliveryCharge: item.deliveryCharge || 0,
-          discountAmount: item.discountAmount || 0,
-          totalPrice: item.totalPrice,
-          couponCode: item.couponCode,
-          couponDiscount: item.discountAmount || 0,
-          addOns: item.addOns || [],
-          weeklyCustomizations: item.weeklyCustomizations || [],
-          selectedDays: item.selectedDays || [],
-          customization: item.customization || "",
-          paymentMethod: finalPaymentMethod,
-          cartOrderId,
-        };
+        const tiffin = tiffinsById.get(item.tiffinId);
+        const resolvedSellerId = tiffin?.sellerId ? String(tiffin.sellerId) : String(item.sellerId);
+        if (!itemsBySeller.has(resolvedSellerId)) itemsBySeller.set(resolvedSellerId, []);
+        itemsBySeller.get(resolvedSellerId)!.push({ ...item, sellerId: resolvedSellerId });
+      }
 
-        const booking = await storage.createBooking(bookingData as any);
-        createdBookings.push(booking);
+      // Build every booking to create across every seller up front, tagging
+      // each with the seller/order it belongs to so results can be regrouped
+      // after the bulk insert below.
+      type PendingBooking = { sellerId: string; orderId: string; discountAmount: number };
+      const pending: PendingBooking[] = [];
+      const bookingDocs: any[] = [];
 
-        if (item.couponCode && (item.discountAmount || 0) > 0) {
-          await storage.incrementCouponUsage(item.couponCode);
+      for (const [sellerId, sellerItems] of itemsBySeller) {
+        // Every seller in the cart gets its own order id — this is what
+        // actually splits one multi-seller cart into separate orders.
+        const orderId = new ObjectId().toString();
+
+        // ✅ SECURITY: every ₹ amount below comes from the tiffin's own DB
+        // record + server-side rules, never from item.basePrice / item.total
+        // Price / etc as sent by the client — see calculateItemBasePricing.
+        const basePricings = sellerItems.map((item) =>
+          calculateItemBasePricing(tiffinsById.get(item.tiffinId)!, item)
+        );
+
+        // ✅ NEW: the cart-level coupon is validated ONCE against this
+        // seller-order's subtotal and split across its items — not
+        // re-validated/re-applied per item, which would multiply the
+        // discount by the number of items in the order.
+        const discountShares = await calculateSellerOrderDiscount(
+          trimmedCouponCode,
+          basePricings.map((p) => p.subtotal)
+        );
+
+        sellerItems.forEach((item, i) => {
+          const pricing = basePricings[i];
+          const discountAmount = discountShares[i] || 0;
+          const totalPrice = Math.max(0, pricing.subtotal + pricing.deliveryCharge - discountAmount);
+
+          bookingDocs.push({
+            tiffinId: item.tiffinId,
+            sellerId,
+            customerId: req.userId,
+            customerName: user.name,
+            customerEmail: user.email,
+            customerPhone: user.phone,
+            customerAddress: user.address,
+            customerCity: user.city,
+            deliveryAddress: user.address,
+            date: item.date,
+            slot: item.slot,
+            quantity: item.quantity,
+            bookingType: item.bookingType,
+            basePrice: pricing.basePrice,
+            addOnsPrice: pricing.addOnsPrice,
+            deliveryCharge: pricing.deliveryCharge,
+            discountAmount,
+            totalPrice,
+            couponCode: discountAmount > 0 ? trimmedCouponCode : undefined,
+            couponDiscount: discountAmount,
+            addOns: pricing.validatedAddOns,
+            weeklyCustomizations: pricing.validatedWeeklyCustomizations,
+            selectedDays: item.selectedDays || [],
+            customization: item.customization || "",
+            paymentMethod: finalPaymentMethod,
+            cartOrderId: orderId,
+          });
+          pending.push({ sellerId, orderId, discountAmount });
+        });
+      }
+
+      // ✅ PERFORMANCE: a single insertMany() for every booking in the cart
+      // instead of one sequential `.save()` per line — this is what makes
+      // "Place Order" respond almost instantly even for large multi-seller carts.
+      const createdBookings = await storage.createBookingsBulk(bookingDocs as any);
+
+      // Regroup the flat, order-preserved insertMany results back into one
+      // order per seller (insertMany returns docs in the same order given).
+      const sellerOrders: Array<{ sellerId: string; orderId: string; bookings: any[] }> = [];
+      const sellerOrderIndex = new Map<string, number>();
+      createdBookings.forEach((booking, i) => {
+        const { sellerId, orderId } = pending[i];
+        let idx = sellerOrderIndex.get(sellerId);
+        if (idx === undefined) {
+          idx = sellerOrders.length;
+          sellerOrderIndex.set(sellerId, idx);
+          sellerOrders.push({ sellerId, orderId, bookings: [] });
+        }
+        sellerOrders[idx].bookings.push(booking);
+      });
+
+      // Coupon usage — increment once per seller-order that actually used
+      // it (not once per line item, which would over-count usage).
+      if (trimmedCouponCode) {
+        const ordersThatUsedCoupon = new Set(
+          pending.filter((p) => p.discountAmount > 0).map((p) => p.orderId)
+        );
+        if (ordersThatUsedCoupon.size > 0) {
+          await Promise.all(
+            Array.from(ordersThatUsedCoupon).map(() => storage.incrementCouponUsage(trimmedCouponCode))
+          );
         }
       }
 
-      // Best-effort seller notification for the whole cart order — never blocks checkout
-      try {
-        const firstTiffin = await storage.getTiffinById(items[0].tiffinId);
-        if (firstTiffin) {
-          const seller = await storage.getSellerById(firstTiffin.sellerId);
-          if (seller) {
-            const sellerUser = await storage.getUserById(seller.userId);
-            if (sellerUser) {
-              const cartTotal = createdBookings.reduce((sum, b: any) => sum + (b.totalPrice || 0), 0);
-              const sellerDashboardLink = `${process.env.FRONTEND_URL || 'http://localhost:5000'}/seller/dashboard`;
-              const cartTiffinLabel = `Cart order (${createdBookings.length} item${createdBookings.length > 1 ? "s" : ""})`;
-
-              await sendOrderNotificationToSeller(sellerUser.email, {
-                customerName: user.name,
-                customerEmail: user.email,
-                customerPhone: user.phone,
-                customerAddress: user.address,
-                customerCity: user.city,
-                tiffinTitle: cartTiffinLabel,
-                bookingType: "single",
-                quantity: createdBookings.length,
-                totalPrice: cartTotal,
-                deliveryDate: items[0].date,
-                slot: items[0].slot,
-                deliveryAddress: user.address,
-                orderId: cartOrderId.slice(-8),
-                discountAmount: 0,
-                couponCode: null,
-                subtotal: cartTotal,
-              }, sellerDashboardLink);
-
-              // ✅ Customer confirmation for the cart order (was previously missing)
-              await sendEmailSafely(
-                () => sendBookingConfirmationToCustomer(
-                  user.email,
-                  user.name,
-                  cartTiffinLabel,
-                  seller.shopName || sellerUser.name,
-                  seller.contactNumber,
-                  items[0].date,
-                  items[0].slot,
-                  createdBookings.length,
-                  cartTotal,
-                  0,
-                  null,
-                  [],
-                  [],
-                  [],
-                  ""
-                ),
-                "booking confirmation to customer (cart order)"
-              );
-            }
-          }
+      // ✅ REAL-TIME: push every new seller-order straight to that seller's
+      // dashboard over the socket so it shows up instantly without them
+      // needing to refresh the page — same mechanism the single-item
+      // /api/bookings route already uses.
+      for (const order of sellerOrders) {
+        try {
+          emitNewOrderToSeller(order.sellerId, {
+            cartOrderId: order.orderId,
+            bookings: order.bookings,
+            itemCount: order.bookings.length,
+          });
+        } catch (socketError) {
+          console.warn("⚠️ Real-time new-order emit failed for seller", order.sellerId, socketError);
         }
-      } catch (notifyError) {
-        console.warn("⚠️ Cart order notification failed, but bookings were created:", notifyError);
       }
 
-      res.status(201).json({ cartOrderId, bookings: createdBookings });
+      // 🎁 Order(s) successful — automatically credit 5 reward tokens to the
+      // customer's wallet for EACH seller-order placed in this checkout
+      // (a multi-seller cart = multiple orders = multiple 5-token rewards).
+      const totalRewardTokens = ORDER_REWARD_TOKENS * sellerOrders.length;
+      let newWalletBalance: number | null = null;
+      for (const order of sellerOrders) {
+        newWalletBalance = await creditOrderRewardTokens(
+          req.userId!,
+          `Order reward — ${order.orderId.slice(-8)}`
+        );
+      }
+
+      // ✅ PERFORMANCE: respond to the customer as soon as the order exists.
+      // Seller/customer emails are outbound SMTP calls that can take seconds —
+      // they must never be on the critical path of "place order". They're
+      // fired below, after the response, best-effort.
+      res.status(201).json({
+        orders: sellerOrders.map((o) => ({ sellerId: o.sellerId, orderId: o.orderId, itemCount: o.bookings.length })),
+        bookings: createdBookings,
+        rewardTokens: totalRewardTokens,
+        walletBalance: newWalletBalance,
+        message: `Order placed successfully! ${totalRewardTokens} tokens transferred to your wallet 🎉`,
+      });
+
+      notifySellersForCartOrders(sellerOrders, user).catch((err) => {
+        console.warn("⚠️ Background order notification failed (bookings were already created):", err);
+      });
     } catch (error: any) {
       console.error("❌ Error checking out cart:", error);
       res.status(500).json({ message: error.message });
@@ -1519,6 +1868,15 @@ app.post("/api/bookings/:id/cancel", async (req: Request, res: Response) => {
 
     console.log('✅ Booking cancelled successfully:', updatedBooking);
 
+    // ✅ REAL-TIME: let the seller's dashboard reflect the cancellation instantly.
+    if (booking.sellerId) {
+      try {
+        emitOrderUpdateToSeller(booking.sellerId, updatedBooking);
+      } catch (socketError) {
+        console.warn("⚠️ Real-time cancellation emit failed:", socketError);
+      }
+    }
+
     // ✅ Send cancellation email to seller WITH PHONE NUMBER
     if (booking.sellerId) {
       try {
@@ -1619,11 +1977,24 @@ app.put("/api/seller/bookings/:id", authenticateToken, async (req: AuthRequest, 
       return res.status(500).json({ message: "Failed to update booking" });
     }
 
-    console.log("✅ Booking status updated successfully:", updatedBooking);
-      
-      // Send status update email to the customer safely
-      try {
-        if (booking.customerEmail) {
+    // ✅ REAL-TIME: push the status change straight to the customer's
+    // dashboard. This is synchronous/local (no network call), so it never
+    // delays the response below.
+    try {
+      emitOrderStatusToCustomer(updatedBooking.customerId, updatedBooking);
+    } catch (socketError) {
+      console.warn("⚠️ Real-time status-update emit failed:", socketError);
+    }
+
+    // ✅ PERFORMANCE: respond to the seller immediately — this is what
+    // "status update happens immediately" actually depends on. The customer
+    // notification email is an outbound SMTP call that can take seconds, so
+    // it runs in the background after the response instead of blocking it.
+    res.json(updatedBooking);
+
+    if (booking.customerEmail) {
+      (async () => {
+        try {
           const tiffin = await storage.getTiffinById(booking.tiffinId);
           await sendEmailSafely(
             () => sendOrderStatusUpdateToCustomer(
@@ -1635,17 +2006,16 @@ app.put("/api/seller/bookings/:id", authenticateToken, async (req: AuthRequest, 
             ),
             "order status update to customer"
           );
+        } catch (emailError) {
+          console.warn("⚠️ Email sending failed, but booking was updated");
         }
-      } catch (emailError) {
-        console.warn("⚠️ Email sending failed, but booking was updated");
-      }
-
-      res.json(updatedBooking);
-    } catch (error: any) {
-      console.error("❌ Error updating booking status:", error);
-      res.status(500).json({ message: "Failed to update booking status" });
+      })();
     }
-  });
+  } catch (error: any) {
+    console.error("❌ Error updating booking status:", error);
+    res.status(500).json({ message: "Failed to update booking status" });
+  }
+});
 
  
 
@@ -1801,6 +2171,15 @@ app.post("/api/bookings/:id/cancel", authenticateToken, async (req: AuthRequest,
 
     console.log('✅ Booking cancelled successfully:', updatedBooking);
 
+    // ✅ REAL-TIME: let the seller's dashboard reflect the cancellation instantly.
+    if (booking.sellerId) {
+      try {
+        emitOrderUpdateToSeller(booking.sellerId, updatedBooking);
+      } catch (socketError) {
+        console.warn("⚠️ Real-time cancellation emit failed:", socketError);
+      }
+    }
+
     // ✅ Send cancellation email to seller
     if (booking.sellerId) {
       try {
@@ -1928,6 +2307,11 @@ app.post("/api/bookings/:id/cancel", authenticateToken, async (req: AuthRequest,
   });
 
   const httpServer = createServer(app);
+
+  // ✅ Real-time updates (new orders → seller, status updates → customer)
+  // share this same HTTP server — no extra port, no separate process.
+  initSocket(httpServer);
+
   return httpServer;
 }
 

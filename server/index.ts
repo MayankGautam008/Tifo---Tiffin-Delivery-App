@@ -37,7 +37,7 @@ app.use(helmet({
 app.use(cors({
   origin: process.env.NODE_ENV === 'production' 
     ? ['https://yourdomain.com'] 
-    : ['http://localhost:3000', 'http://localhost:5000'],
+    : ['http://localhost:3000', 'http://localhost:5000', 'http://0.0.0.0:5000'],
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH'],
   allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With']
@@ -51,21 +51,6 @@ app.use(express.urlencoded({
   extended: false, 
   limit: '10kb' 
 }));
-
-// ✅ TURNSTILE BYPASS MIDDLEWARE - BODY PARSER KE BAAD (YAHAN SAHI JAGAH HAI)
-app.use((req: Request, res: Response, next: NextFunction) => {
-  // Login aur register routes ke liye turnstileToken hatao
-  if (req.path === '/api/auth/login' || req.path === '/api/auth/register') {
-    if (req.body && req.body.turnstileToken) {
-      console.log('🔧 Removing turnstileToken from request:', req.body.turnstileToken);
-      delete req.body.turnstileToken;
-      console.log('✅ turnstileToken removed, body now:', req.body);
-    } else {
-      console.log('ℹ️ No turnstileToken found in request body');
-    }
-  }
-  next();
-});
 
 // 4. Data sanitization against NoSQL injection
 app.use(mongoSanitize());
@@ -94,10 +79,22 @@ const authLimiter = rateLimit({
   legacyHeaders: false,
 });
 
+// ✅ Extra layer on top of the general limiter for the checkout endpoint
+const checkoutLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 20,
+  message: {
+    error: 'Too many checkout requests, please slow down and try again in a minute.'
+  },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
 // Apply rate limits
 app.use('/api/', generalLimiter);
 app.use('/api/auth/login', authLimiter);
 app.use('/api/auth/register', authLimiter);
+app.use('/api/cart/checkout', checkoutLimiter);
 
 // ✅ Check JWT secret presence
 if (!process.env.JWT_SECRET) {
@@ -142,7 +139,8 @@ app.use((req: Request, res: Response, next: NextFunction) => {
 // ✅ SIMPLE TELEGRAM BOT SETUP - NO ERRORS
 function setupSimpleTelegramBot() {
   try {
-    const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN || '7749762991:AAF4re8yBw9MOneQDTl6N6Ek4wzk4PCOirY';
+    // ✅ SECURITY: no hardcoded fallback token
+    const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
     
     if (!TELEGRAM_BOT_TOKEN) {
       console.warn('⚠️ TELEGRAM_BOT_TOKEN not found. Telegram bot disabled.');
@@ -157,6 +155,9 @@ function setupSimpleTelegramBot() {
       function generateVerificationCode(): string {
         return Math.floor(100000 + Math.random() * 900000).toString();
       }
+
+      const pendingVerifications = new Map<number, { email: string; code: string; expiresAt: number }>();
+      const VERIFICATION_TTL_MS = 15 * 60 * 1000;
 
       // Start command
       bot.onText(/\/start/, async (msg) => {
@@ -175,23 +176,28 @@ function setupSimpleTelegramBot() {
         }
       });
 
-      // Verify command - SUPER SIMPLE
+      // Verify command
       bot.onText(/\/verify (.+)/, async (msg, match) => {
         const chatId = msg.chat.id;
         const email = match![1].trim();
 
         try {
-          console.log(`📧 Verification request: ${email} from ${chatId}`);
-          
+          console.log(`📧 Verification request from chat ID: ${chatId}`);
+
           const verificationCode = generateVerificationCode();
-          
+          pendingVerifications.set(chatId, {
+            email,
+            code: verificationCode,
+            expiresAt: Date.now() + VERIFICATION_TTL_MS,
+          });
+
           await bot.sendMessage(chatId,
             `📧 Verification code: ${verificationCode}\n\n` +
             `Use: /code ${verificationCode}\n\n` +
             `This code expires in 15 minutes`
           );
 
-          console.log(`✅ Verification code sent to ${email}: ${verificationCode}`);
+          console.log(`✅ Verification code sent to chat ID: ${chatId}`);
 
         } catch (error) {
           console.error('Verify command error:', error);
@@ -205,7 +211,21 @@ function setupSimpleTelegramBot() {
         const code = match![1].trim();
 
         try {
-          // For now, just accept any code to test
+          const pending = pendingVerifications.get(chatId);
+
+          if (!pending || pending.expiresAt < Date.now()) {
+            pendingVerifications.delete(chatId);
+            await bot.sendMessage(chatId, '❌ No active verification, or it expired. Please run /verify your-email@example.com again.');
+            return;
+          }
+
+          if (pending.code !== code) {
+            await bot.sendMessage(chatId, '❌ Incorrect code. Please check and try again.');
+            return;
+          }
+
+          pendingVerifications.delete(chatId);
+
           await bot.sendMessage(chatId,
             `🎉 Verification Successful!\n\n` +
             `You will now receive order notifications.\n\n` +
@@ -264,8 +284,8 @@ function setupSimpleTelegramBot() {
 // ✅ TEST ORDER NOTIFICATION FUNCTION
 async function sendTestOrderNotification(chatId: number, orderDetails: any) {
   try {
-    const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN || '7749762991:AAF4re8yBw9MOneQDTl6N6Ek4wzk4PCOirY';
-    
+    const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
+
     if (!TELEGRAM_BOT_TOKEN) return;
 
     const TelegramBot = await import('node-telegram-bot-api');
@@ -326,7 +346,7 @@ async function sendTestOrderNotification(chatId: number, orderDetails: any) {
     // ✅ Root route - Vite ke baad
     app.get("/", (req: Request, res: Response) => {
       if (app.get("env") === "development") {
-        res.redirect("http://localhost:5000");
+        res.redirect("/");
       } else {
         res.json({ 
           message: "Tiffin Service API is running!",
@@ -346,14 +366,15 @@ async function sendTestOrderNotification(chatId: number, orderDetails: any) {
       res.status(status).json({ message });
     });
 
-    // Start server
+    // ✅ FIXED: Listen on 0.0.0.0 instead of localhost
     const port = parseInt(process.env.PORT || "5000", 10);
-    const host = "localhost";
+    const host = "0.0.0.0"; // Changed from "localhost" to "0.0.0.0"
 
     server.listen(port, host, () => {
       const msg = `🚀 Server running at http://${host}:${port}`;
       log ? log(msg) : console.log(msg);
       console.log("🌐 Website should be available at: http://localhost:5000");
+      console.log("🌍 Also accessible at: http://0.0.0.0:5000");
       console.log("🤖 Telegram Bot: @TiffoSellerBot");
       console.log("💡 Test the bot by searching '@TiffoSellerBot' on Telegram");
     });

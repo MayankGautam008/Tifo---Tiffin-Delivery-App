@@ -215,7 +215,7 @@ export default function Login() {
                   <UtensilsCrossed className="w-8 h-8 text-white" />
                 </div>
                 <div>
-                  <h1 className="text-4xl font-bold text-red-600">Tiffo</h1>
+                  <h1 className="text-4xl font-bold text-red-600">Tifo</h1>
                   <p className="text-gray-600 mt-1">Fresh Food Delivery</p>
                 </div>
               </div>

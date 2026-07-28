@@ -57,7 +57,15 @@ import {
   RefreshCw,
   Store,
   ChevronRight,
+  LogOut,
 } from "lucide-react";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+  DropdownMenuSeparator,
+} from "@/components/ui/dropdown-menu";
 
 const DAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
 const TIME_SLOTS = [
@@ -589,11 +597,30 @@ function DayStatusButtons({ bookingId, entry }: { bookingId: string; entry: Sell
     mutationFn: async (status: "Pending" | "Delivered" | "Missed") => {
       return apiRequest("PATCH", `/api/seller/subscriptions/${bookingId}/schedule/${entry._id}/status`, { status });
     },
+    // ✅ Update the day's status in the local cache immediately instead of
+    // waiting on a full refetch — matches the pattern already used for the
+    // main order-status buttons below, so this feels just as instant.
+    onMutate: async (status) => {
+      queryClient.setQueryData<SellerSubscriptionBooking[]>(["/api/seller/subscriptions"], (old) => {
+        if (!old) return old;
+        return old.map((sub) =>
+          sub._id === bookingId
+            ? {
+                ...sub,
+                deliverySchedule: sub.deliverySchedule.map((d) =>
+                  d._id === entry._id ? { ...d, status } : d
+                ),
+              }
+            : sub
+        );
+      });
+    },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/seller/subscriptions"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/seller/subscriptions"], refetchType: "none" });
     },
     onError: (error: Error) => {
       toast({ title: "Couldn't update day", description: error.message, variant: "destructive" });
+      queryClient.invalidateQueries({ queryKey: ["/api/seller/subscriptions"] });
     },
   });
 
@@ -932,7 +959,7 @@ function GroupOrderCard({
 // Main
 // ------------------------------------------------------------------
 export default function SellerDashboard() {
-  const { isAuthenticated, isSeller, seller } = useAuth();
+  const { isAuthenticated, isSeller, seller, user, logout } = useAuth();
   const [, setLocation] = useLocation();
   const { toast } = useToast();
 
@@ -1371,6 +1398,15 @@ export default function SellerDashboard() {
 
   const goHome = () => setLocation("/");
 
+  // ✅ Lets a seller log out straight from the dashboard's profile menu —
+  // e.g. to switch and log in with a different seller/customer id. Landing
+  // on "/" afterwards means the next "Login" tap opens the normal
+  // login/register page, where a fresh account can be created too.
+  const handleSellerLogout = () => {
+    logout();
+    setLocation("/");
+  };
+
   const NAV_ITEMS = [
     { value: "overview", label: "Overview", icon: LayoutGrid },
     { value: "orders", label: "Orders", icon: ClipboardList, badge: pendingOrderCount },
@@ -1416,10 +1452,34 @@ export default function SellerDashboard() {
                   </p>
                 </div>
               </div>
-              <Button onClick={goHome} variant="outline" size="sm" className="h-9 shrink-0 border-border/80">
-                <ArrowLeft className="w-4 h-4 sm:mr-1.5" />
-                <span className="hidden sm:inline">Back</span>
-              </Button>
+              <div className="flex items-center gap-2 shrink-0">
+                <Button onClick={goHome} variant="outline" size="sm" className="h-9 border-border/80">
+                  <ArrowLeft className="w-4 h-4 sm:mr-1.5" />
+                  <span className="hidden sm:inline">Back</span>
+                </Button>
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <button className="w-9 h-9 rounded-full overflow-hidden border-2 border-orange-300 flex items-center justify-center bg-gray-100 hover:border-orange-400 transition-colors">
+                      <img
+                        src="https://tse2.mm.bing.net/th/id/OIP.7voziSoXjbJfxit4O9xJZgHaHa?r=0&pid=Api&P=0&h=180"
+                        alt="Profile"
+                        className="w-full h-full object-cover"
+                      />
+                    </button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" className="w-56 mt-2 rounded-xl shadow-lg border border-gray-200">
+                    <div className="px-3 py-2">
+                      <p className="text-sm font-semibold text-gray-900 truncate">{user?.name || seller?.shopName || "Seller"}</p>
+                      <p className="text-xs text-gray-500 truncate">{user?.email || seller?.contactNumber}</p>
+                    </div>
+                    <DropdownMenuSeparator className="bg-gray-100" />
+                    <DropdownMenuItem onClick={handleSellerLogout} className="text-red-600 hover:bg-red-50 cursor-pointer rounded-lg mx-1">
+                      <LogOut className="w-4 h-4 mr-2" />
+                      Logout
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </div>
             </div>
 
             {/* Mobile-first tab navigation — every section one tap away */}

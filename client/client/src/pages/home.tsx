@@ -858,7 +858,7 @@ export default function Home() {
       {/* Cookie Consent */}
       <CookieConsent />
 
-      {/* Navbar - Tiffo App Style Header with kitchen background photo */}
+      {/* Navbar - Tifo App Style Header with kitchen background photo */}
 <div className="absolute top-0 left-0 right-0 z-40 py-3 overflow-hidden">
   {/* Background photo behind header, fading into the cream section below */}
   <div className="absolute inset-0 -z-10">
@@ -1653,7 +1653,7 @@ export default function Home() {
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-2xl p-6 max-w-md w-full mx-auto shadow-2xl">
             <div className="text-center mb-6">
-              <h2 className="text-2xl font-bold text-gray-800 mb-2">Welcome to Tiffo</h2>
+              <h2 className="text-2xl font-bold text-gray-800 mb-2">Welcome to Tifo</h2>
               <p className="text-gray-600">Choose how you want to continue</p>
             </div>
 
@@ -1758,7 +1758,7 @@ export default function Home() {
                 <div className="w-8 h-8 bg-red-500 rounded-lg flex items-center justify-center">
                   <span className="text-white font-bold text-sm">T</span>
                 </div>
-                <span className="font-bold text-xl">Tiffo</span>
+                <span className="font-bold text-xl">Tifo</span>
               </div>
               <p className="text-gray-400 text-sm mb-4 leading-relaxed">
                 Delivering homemade happiness to your doorstep. Fresh, hygienic, and delicious tiffins from trusted kitchens.
@@ -1833,7 +1833,7 @@ export default function Home() {
           </div>
 
           <div className="border-t border-gray-800 mt-8 pt-6 text-center text-gray-400 text-sm">
-            <p>&copy; 2025 Tiffo. All rights reserved.</p>
+            <p>&copy; 2025 Tifo. All rights reserved.</p>
           </div>
         </div>
       </footer>

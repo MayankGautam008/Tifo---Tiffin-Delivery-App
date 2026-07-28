@@ -144,4 +144,15 @@ const BookingSchema = new Schema<IBooking>(
   { timestamps: true }
 );
 
+// ✅ PERFORMANCE: these are the exact filters/sorts used across the app
+// (seller dashboard "my orders", customer "my bookings", cart-order grouping,
+// subscription lists). Without indexes every one of those was a full
+// collection scan; as the bookings collection grows this is the single
+// biggest thing slowing down order placement + status screens.
+BookingSchema.index({ sellerId: 1, createdAt: -1 });
+BookingSchema.index({ customerEmail: 1, createdAt: -1 });
+BookingSchema.index({ cartOrderId: 1 });
+BookingSchema.index({ sellerId: 1, bookingType: 1 });
+BookingSchema.index({ customerEmail: 1, bookingType: 1 });
+
 export const Booking = mongoose.model<IBooking>("Booking", BookingSchema);

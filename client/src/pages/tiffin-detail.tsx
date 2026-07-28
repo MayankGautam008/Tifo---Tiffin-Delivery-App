@@ -720,12 +720,14 @@ export default function TiffinDetail() {
         deliveryAddress: "Home Delivery",
         customization: customInstructions,
       }),
-    onSuccess: () => {
+    onSuccess: (response: any) => {
+      const rewardTokens = response?.rewardTokens || 5;
       toast({
         title: "Booking successful!",
-        description: "Your order has been placed. The seller has been notified.",
+        description: `Your order has been placed. 🎉 ${rewardTokens} tokens transferred to your wallet!`,
       });
       queryClient.invalidateQueries({ queryKey: ["/api/user/bookings"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/wallet"] });
       setIsBookingDialogOpen(false);
       setLocation("/my-bookings");
     },

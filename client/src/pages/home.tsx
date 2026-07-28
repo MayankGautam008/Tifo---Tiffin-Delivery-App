@@ -7,6 +7,13 @@ import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Skeleton } from "@/components/ui/skeleton";
 import CookieConsent from "@/components/cookie-consent";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+  DropdownMenuSeparator,
+} from "@/components/ui/dropdown-menu";
 import { 
   Search, 
   Gift,
@@ -60,14 +67,16 @@ import {
   UtensilsCrossed,
   PlusCircle,
   PackageCheck,
-  ArrowRight
+  ArrowRight,
+  LogOut,
+  LayoutDashboard
 } from "lucide-react";
 import { Link, useLocation } from "wouter";
 import type { TiffinWithSeller } from "@shared/schema";
 import { useAuth } from "@/lib/auth-context";
 import { WalletButton } from "@/components/wallet-button";
 import { useCart } from "@/lib/cart-context";
-import { useToast } from "@/hooks/use-toast";
+import { hasSellerLandedOnDashboard, markSellerLandedOnDashboard } from "@/lib/seller-landing";
 
 interface TopRatedSeller {
   _id: string;
@@ -634,35 +643,11 @@ export default function Home() {
     queryKey: ["/api/top-rated-sellers"],
   });
 
-  const { isAuthenticated, user } = useAuth();
-  const { addItem: addToCart, totalItems } = useCart();
-  const { toast } = useToast();
+  const { isAuthenticated, user, logout } = useAuth();
+  // Home page only browses meals/sellers — adding to cart happens on the
+  // seller's own menu page, so we only need the cart badge count here.
+  const { totalItems } = useCart();
 
-  const handleQuickAddToCart = (e: React.MouseEvent, tiffin: TiffinWithSeller) => {
-    e.preventDefault();
-    e.stopPropagation();
-    if (!isAuthenticated) {
-      toast({ title: "Login Required", description: "Please login to add items to your cart", variant: "destructive" });
-      setLocation("/login");
-      return;
-    }
-    const deliveryCharge = 19;
-    addToCart({
-      tiffinId: tiffin._id,
-      sellerId: tiffin.sellerId,
-      tiffinTitle: tiffin.title,
-      bookingType: "single",
-      date: new Date().toISOString().split("T")[0],
-      slot: "Instant Delivery - ASAP",
-      quantity: 1,
-      basePrice: tiffin.price,
-      addOnsPrice: 0,
-      deliveryCharge,
-      discountAmount: 0,
-      totalPrice: tiffin.price + deliveryCharge,
-    });
-    toast({ title: "Added to Cart", description: `${tiffin.title} has been added to your cart.` });
-  };
   
   const [hasSearched, setHasSearched] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
@@ -818,6 +803,20 @@ export default function Home() {
     else if (userType === "customer") { window.location.href = "/my-bookings"; }
   }, [userType]);
 
+  // ✅ A seller's Dashboard should be what they land on — not the customer
+  // Home page — whenever the app opens fresh with a session already saved
+  // (e.g. reopening a bookmark/tab, or a browser refresh landing on "/").
+  // This only fires once per browser session: after it redirects once (or
+  // after login/register already sent them to the Dashboard directly), the
+  // "Home" link in the navbar works normally, so the seller can still
+  // browse Home on purpose without being bounced back on every visit.
+  useEffect(() => {
+    if (isAuthenticated && user?.role === "seller" && !hasSellerLandedOnDashboard()) {
+      markSellerLandedOnDashboard();
+      setLocation("/seller/dashboard");
+    }
+  }, [isAuthenticated, user, setLocation]);
+
   const categories = ["Veg", "Non-Veg"];
   const priceRanges = [
     { label: "Under ₹100", value: "0-100", min: 0, max: 100 },
@@ -854,6 +853,22 @@ export default function Home() {
   const popularTiffins = filteredTiffins.slice(0, 6);
 
   const handleLogin = (type: "customer" | "seller" | "admin") => { setUserType(type); setShowLoginPopup(false); };
+
+  // ✅ Logout button available from the profile icon itself — so a seller
+  // who wants to log in with a different id, or a customer who wants to
+  // switch accounts, can log out in one tap and land back on "/". Hitting
+  // "Login" after that opens the normal login/register page again, where
+  // they (or anyone) can create a fresh account.
+  const handleProfileLogout = () => {
+    logout();
+    setLocation("/");
+  };
+
+  const getProfileDashboardLink = () => {
+    if (user?.role === "seller") return "/seller/dashboard";
+    if (user?.role === "admin") return "/admin";
+    return "/my-bookings";
+  };
   const handleImageUpload = (url: string, type: 'hero' | 'banner') => { if (type === 'hero') { setHeroImageUrl(url); } else { setBannerImageUrl(url); } setShowImageUpload(false); };
   const handleFoodCategoryClick = (categoryName: string) => { setSelectedFoodCategory(selectedFoodCategory === categoryName ? null : categoryName); setSearchQuery(categoryName); };
 
@@ -931,9 +946,38 @@ export default function Home() {
                 </button>
               </Link>
               {isAuthenticated && user?.role === "customer" && <WalletButton />}
-              <button onClick={() => setShowLoginPopup(true)} className="w-9 h-9 sm:w-10 sm:h-10 rounded-full overflow-hidden border-2 border-orange-300 flex items-center justify-center bg-gray-100 flex-shrink-0">
-                <img src="https://tse2.mm.bing.net/th/id/OIP.7voziSoXjbJfxit4O9xJZgHaHa?r=0&pid=Api&P=0&h=180" alt="Profile" className="w-full h-full object-cover" />
-              </button>
+              {isAuthenticated ? (
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <button className="w-9 h-9 sm:w-10 sm:h-10 rounded-full overflow-hidden border-2 border-orange-300 flex items-center justify-center bg-gray-100 flex-shrink-0 hover:border-red-300 transition-colors">
+                      <img src="https://tse2.mm.bing.net/th/id/OIP.7voziSoXjbJfxit4O9xJZgHaHa?r=0&pid=Api&P=0&h=180" alt="Profile" className="w-full h-full object-cover" />
+                    </button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" className="w-56 mt-2 rounded-xl shadow-lg border border-gray-200">
+                    <div className="px-3 py-2">
+                      <p className="text-sm font-semibold text-gray-900">{user?.name}</p>
+                      <p className="text-xs text-gray-500">{user?.email}</p>
+                    </div>
+                    <DropdownMenuItem asChild className="cursor-pointer rounded-lg mx-1">
+                      <Link href={getProfileDashboardLink()}>
+                        <div className="flex items-center w-full">
+                          <LayoutDashboard className="w-4 h-4 mr-2" />
+                          Dashboard
+                        </div>
+                      </Link>
+                    </DropdownMenuItem>
+                    <DropdownMenuSeparator className="bg-gray-100" />
+                    <DropdownMenuItem onClick={handleProfileLogout} className="text-red-600 hover:bg-red-50 cursor-pointer rounded-lg mx-1">
+                      <LogOut className="w-4 h-4 mr-2" />
+                      Logout
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              ) : (
+                <button onClick={() => setShowLoginPopup(true)} className="w-9 h-9 sm:w-10 sm:h-10 rounded-full overflow-hidden border-2 border-orange-300 flex items-center justify-center bg-gray-100 flex-shrink-0">
+                  <img src="https://tse2.mm.bing.net/th/id/OIP.7voziSoXjbJfxit4O9xJZgHaHa?r=0&pid=Api&P=0&h=180" alt="Profile" className="w-full h-full object-cover" />
+                </button>
+              )}
             </div>
           </div>
           <div className="flex items-center gap-3 max-w-2xl">
@@ -1310,10 +1354,6 @@ export default function Home() {
                               Flat ₹{Math.round(tiffin.price * 0.2)} OFF · <span className="text-gray-400 line-through">₹{Math.round(tiffin.price * 1.2)}</span> <span className="font-bold text-gray-900">₹{tiffin.price}</span>
                             </span>
                           </div>
-                          <Button size="sm" onClick={(e) => handleQuickAddToCart(e, tiffin)} className="w-full mt-3 h-8 text-xs font-semibold bg-white border border-red-500 text-red-600 hover:bg-red-500 hover:text-white rounded-lg shadow-sm transition-colors">
-                            <ShoppingCart className="w-3.5 h-3.5 mr-1.5" />
-                            Add to Cart
-                          </Button>
                         </div>
                       </Card>
                     </Link>
@@ -1362,10 +1402,6 @@ export default function Home() {
                             Flat ₹{Math.round(tiffin.price * 0.2)} OFF · <span className="text-gray-400 line-through">₹{Math.round(tiffin.price * 1.2)}</span> <span className="font-bold text-gray-900">₹{tiffin.price}</span>
                           </span>
                         </div>
-                        <Button size="sm" onClick={(e) => handleQuickAddToCart(e, tiffin)} className="w-full mt-3 h-8 text-xs font-semibold bg-white border border-red-500 text-red-600 hover:bg-red-500 hover:text-white rounded-lg shadow-sm transition-colors">
-                          <ShoppingCart className="w-3.5 h-3.5 mr-1.5" />
-                          Add to Cart
-                        </Button>
                       </div>
                     </Card>
                   </Link>
@@ -1461,10 +1497,6 @@ export default function Home() {
                                 Flat ₹{Math.round(tiffin.price * 0.2)} OFF · <span className="text-gray-400 line-through">₹{Math.round(tiffin.price * 1.2)}</span> <span className="font-bold text-gray-900">₹{tiffin.price}</span>
                               </span>
                             </div>
-                            <Button size="sm" onClick={(e) => handleQuickAddToCart(e, tiffin)} className="w-full mt-3 h-8 text-xs font-semibold bg-white border border-red-500 text-red-600 hover:bg-red-500 hover:text-white rounded-lg shadow-sm transition-colors">
-                              <ShoppingCart className="w-3.5 h-3.5 mr-1.5" />
-                              Add to Cart
-                            </Button>
                           </div>
                         </Card>
                       </Link>

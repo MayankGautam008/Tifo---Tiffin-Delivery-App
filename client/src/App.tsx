@@ -5,6 +5,7 @@ import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { AuthProvider } from "./lib/auth-context";
 import { CartProvider } from "./lib/cart-context";
+import { RealtimeSync } from "@/components/realtime-sync";
 import Home from "@/pages/home";
 import Login from "@/pages/login";
 import Register from "@/pages/register";
@@ -60,6 +61,7 @@ function App() {
       <TooltipProvider>
         <AuthProvider>
           <CartProvider>
+            <RealtimeSync />
             <Toaster />
             <Router />
           </CartProvider>

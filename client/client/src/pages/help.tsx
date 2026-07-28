@@ -37,7 +37,7 @@ export default function HelpPage() {
         from_email: formData.email,
         from_phone: formData.phone,
         issue: formData.issue,
-        subject: `Tiffo Help Request from ${formData.name}`,
+        subject: `Tifo Help Request from ${formData.name}`,
         timestamp: new Date().toLocaleString()
       };
 
@@ -53,7 +53,7 @@ export default function HelpPage() {
           email: formData.email,
           phone: formData.phone,
           issue: formData.issue,
-          _subject: `Tiffo Help Request from ${formData.name}`,
+          _subject: `Tifo Help Request from ${formData.name}`,
           _template: "table",
           _captcha: "false"
         })
@@ -82,7 +82,7 @@ export default function HelpPage() {
       console.error("Error sending email:", error);
       
       // Fallback to traditional mailto
-      const subject = `Tiffo Help Request from ${formData.name}`;
+      const subject = `Tifo Help Request from ${formData.name}`;
       const body = `
 Name: ${formData.name}
 Email: ${formData.email}
@@ -92,7 +92,7 @@ Issue Details:
 ${formData.issue}
 
 ---
-Sent from Tiffo Help Page
+Sent from Tifo Help Page
       `.trim();
 
       const mailtoLink = `mailto:pandeyshashank039@gmail.com?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
@@ -109,7 +109,7 @@ Sent from Tiffo Help Page
   };
 
   const openWhatsApp = () => {
-    const message = `Hi Tiffo Team, I need help with my account.`;
+    const message = `Hi Tifo Team, I need help with my account.`;
     window.open(`https://wa.me/918115067311?text=${encodeURIComponent(message)}`, '_blank');
   };
 
@@ -118,7 +118,7 @@ Sent from Tiffo Help Page
   };
 
   const sendEmail = () => {
-    window.location.href = 'mailto:pandeyshashank039@gmail.com?subject=General Inquiry&body=Hello Tiffo Team,';
+    window.location.href = 'mailto:pandeyshashank039@gmail.com?subject=General Inquiry&body=Hello Tifo Team,';
   };
 
   const goBack = () => {
@@ -174,7 +174,7 @@ Sent from Tiffo Help Page
             </Button>
             <div className="flex items-center gap-2">
               <UtensilsCrossed className="w-8 h-8" />
-              <h1 className="text-2xl font-bold">Tiffo</h1>
+              <h1 className="text-2xl font-bold">Tifo</h1>
             </div>
           </div>
           <Link href="/">
@@ -212,7 +212,7 @@ Sent from Tiffo Help Page
     </div>
     <CardTitle className="text-lg text-gray-900">About Our Team</CardTitle>
     <CardDescription className="text-gray-600">
-      Meet the founders behind Tiffo
+      Meet the founders behind Tifo
     </CardDescription>
   </CardHeader>
   <CardContent className="text-center">
@@ -431,14 +431,14 @@ Sent from Tiffo Help Page
         <div className="max-w-4xl mx-auto px-4 text-center">
           <div className="flex items-center justify-center gap-2 mb-4">
             <UtensilsCrossed className="w-6 h-6 text-red-600" />
-            <span className="text-xl font-bold text-gray-900">Tiffo</span>
+            <span className="text-xl font-bold text-gray-900">Tifo</span>
           </div>
           <p className="text-gray-600 mb-4">
             Fresh Food Delivery • Your satisfaction is our priority
           </p>
           <div className="text-sm text-gray-500">
             <p>Contact: 8115067311 • Email: <span className="text-red-600">pandeyshashank039@gmail.com</span></p>
-            <p className="mt-2">© 2024 Tiffo. All rights reserved.</p>
+            <p className="mt-2">© 2024 Tifo. All rights reserved.</p>
           </div>
         </div>
       </div>

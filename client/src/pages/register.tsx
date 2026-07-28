@@ -12,6 +12,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/lib/auth-context";
 import { apiRequest } from "@/lib/queryClient";
+import { markSellerLandedOnDashboard } from "@/lib/seller-landing";
 import { insertUserSchema, type InsertUser, type AuthResponse } from "@shared/schema";
 import { UtensilsCrossed, Eye, EyeOff, ArrowLeft, Home, Star, Truck, Clock, ShieldCheck } from "lucide-react";
 
@@ -55,6 +56,10 @@ export default function Register() {
           description: "Your account is pending approval from admin.",
           variant: "default",
         });
+        // ✅ See login.tsx / home.tsx — this marks the one-time dashboard
+        // landing as done so the seller's own "Home" navbar link works
+        // normally afterwards instead of bouncing them back every time.
+        markSellerLandedOnDashboard();
         setLocation("/seller/dashboard");
       } else {
         setLocation("/");
