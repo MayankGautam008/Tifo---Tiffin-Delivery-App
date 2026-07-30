@@ -234,6 +234,9 @@ export const deliveryDaySchema = z.object({
   rating: z.number().min(1).max(5).optional(),
   review: z.string().optional(),
   ratedAt: z.string().optional(),
+  // ✅ NEW: customer-written note for this specific day, editable only the day before
+  customizationNote: z.string().optional(),
+  customizedAt: z.string().optional(),
 });
 
 export type DeliveryDay = z.infer<typeof deliveryDaySchema>;

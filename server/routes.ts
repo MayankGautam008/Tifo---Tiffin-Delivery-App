@@ -9,11 +9,12 @@ import {
   sendBookingConfirmationToCustomer,
   sendOrderNotificationToSeller,
   sendPasswordResetOTP,
+  sendSignupOTP,
   sendOrderCancellationToSeller,
   sendOrderStatusUpdateToCustomer,
   sendSellerStatusUpdate,
 } from './emailService';
-import { withLiveStatus } from "./services/deliveryScheduleService";
+import { withLiveStatus, isCustomizableForTomorrow } from "./services/deliveryScheduleService";
 import { registerWalletRoutes } from "./walletRoutes";
 import {
   initSocket,
@@ -74,6 +75,38 @@ interface OtpData {
 }
 
 const manualOtpStore: { [email: string]: OtpData } = {};
+
+// ✅ NEW: holds a not-yet-created account's details (already hashed password)
+// while it waits for the signup email-verification OTP. Nothing is written
+// to the User/Seller collections until the OTP is confirmed.
+type PendingRegistration = {
+  otp: string;
+  expires: number;
+  attempts: number;
+  name: string;
+  email: string;
+  phone: string;
+  hashedPassword: string;
+  role: "admin" | "seller" | "customer";
+  address: string;
+  city: string;
+  shopName?: string;
+};
+const pendingRegistrations: { [email: string]: PendingRegistration } = {};
+const MAX_OTP_ATTEMPTS = 5;
+
+// ✅ EFFICIENCY FIX: these OTP stores are plain in-memory objects with no
+// eviction — every abandoned signup/reset used to sit in memory forever.
+// Sweep out expired entries every 5 minutes instead.
+setInterval(() => {
+  const now = Date.now();
+  for (const key of Object.keys(pendingRegistrations)) {
+    if (pendingRegistrations[key].expires < now) delete pendingRegistrations[key];
+  }
+  for (const key of Object.keys(manualOtpStore)) {
+    if (manualOtpStore[key].expires < now) delete manualOtpStore[key];
+  }
+}, 5 * 60 * 1000);
 
 import { z } from "zod";
 
@@ -349,6 +382,89 @@ async function notifySellersForCartOrders(
   );
 }
 
+// ✅ PERFORMANCE: same idea as notifySellersForCartOrders above, but for the
+// single-order flow (/api/bookings) — this is what makes normal/tiffin
+// orders respond just as fast as cart checkout instead of waiting on
+// outbound seller/customer emails + Telegram before the customer sees
+// "Order placed".
+async function notifyForSingleBooking(
+  booking: any,
+  user: { name: string; email: string },
+  tiffinId: string
+): Promise<void> {
+  try {
+    const tiffin = await storage.getTiffinById(tiffinId);
+    if (!tiffin) return;
+
+    const seller = await storage.getSellerById(tiffin.sellerId);
+    if (!seller) return;
+
+    const sellerUser = await storage.getUserById(seller.userId);
+    if (!sellerUser) return;
+
+    const orderDetails = {
+      customerName: booking.customerName,
+      customerEmail: booking.customerEmail,
+      customerPhone: booking.customerPhone,
+      customerAddress: booking.customerAddress,
+      customerCity: booking.customerCity,
+      tiffinTitle: tiffin.title,
+      bookingType: booking.bookingType,
+      quantity: booking.quantity,
+      totalPrice: booking.totalPrice,
+      deliveryDate: booking.date,
+      slot: booking.slot,
+      deliveryAddress: booking.deliveryAddress,
+      addOns: booking.addOns,
+      weeklyCustomizations: booking.weeklyCustomizations,
+      selectedDays: booking.selectedDays,
+      customization: booking.customization,
+      orderId: booking._id.toString().slice(-8),
+      discountAmount: booking.discountAmount || 0,
+      couponCode: booking.couponCode || null,
+      subtotal: (booking.basePrice || 0) + (booking.addOnsPrice || 0) + (booking.deliveryCharge || 0),
+    };
+
+    const sellerDashboardLink = `${process.env.FRONTEND_URL || 'http://localhost:5000'}/seller/dashboard`;
+
+    // ✅ 1. EMAIL to seller
+    await sendOrderNotificationToSeller(sellerUser.email, orderDetails, sellerDashboardLink);
+
+    // ✅ 2. TELEGRAM — bonus, best-effort
+    try {
+      const { sendOrderNotification } = require('./server');
+      await sendOrderNotification({ ...orderDetails, sellerEmail: sellerUser.email });
+      console.log('✅ Telegram notification sent');
+    } catch (error) {
+      console.log('ℹ️ Telegram not available, but email sent successfully');
+    }
+
+    // ✅ 3. Confirmation email to customer
+    await sendEmailSafely(
+      () => sendBookingConfirmationToCustomer(
+        user.email,
+        user.name,
+        tiffin.title,
+        sellerUser.name,
+        seller.contactNumber,
+        booking.date,
+        booking.slot,
+        booking.quantity,
+        booking.totalPrice,
+        booking.discountAmount || 0,
+        booking.couponCode || null,
+        booking.addOns || [],
+        booking.weeklyCustomizations || [],
+        booking.selectedDays || [],
+        booking.customization || ""
+      ),
+      "booking confirmation to customer"
+    );
+  } catch (notifyError) {
+    console.warn("⚠️ Order notification failed, but booking was created:", notifyError);
+  }
+}
+
 // ✅ PRODUCTION READY TOP RATED ROUTES
 const registerTopRatedRoutes = (app: Express) => {
   // Get top rated sellers
@@ -438,19 +554,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       try {
-        // ⚠️ Turnstile enforcement disabled for now (was rejecting
-        // legitimate register attempts — client-side widget/token wiring
-        // needs to be fixed before this can be turned back on). The
-        // token-stripping bypass middleware stays removed either way, so
-        // once the client sends a real token this can just be re-enabled.
-        // if (process.env.TURNSTILE_SECRET_KEY) {
-        //   const captchaOk = await verifyTurnstile(req.body.turnstileToken);
-        //   if (!captchaOk) {
-        //     return res.status(400).json({ message: "Captcha verification failed. Please try again." });
-        //   }
-        // }
+        // ✅ CAPTCHA (Cloudflare Turnstile — free, unlimited). Only enforced
+        // once TURNSTILE_SECRET_KEY is set in the server .env; see the
+        // matching client widget in register.tsx.
+        if (process.env.TURNSTILE_SECRET_KEY) {
+          const captchaOk = await verifyTurnstile(req.body.turnstileToken);
+          if (!captchaOk) {
+            return res.status(400).json({ message: "Captcha verification failed. Please try again." });
+          }
+        }
 
-        const { name, email, phone, password, role, address, city } = req.body;
+        const { name, phone, password, role, address, city } = req.body;
+        // ✅ BUG FIX: normalize email so case/whitespace differences can't
+        // create duplicate accounts or break the OTP lookup below.
+        const email = String(req.body.email || "").trim().toLowerCase();
 
         const existingUser = await storage.getUserByEmail(email);
         if (existingUser) {
@@ -459,33 +576,149 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
         const hashedPassword = await bcrypt.hash(password, 10);
 
-        const user = await storage.createUser({
+        // ✅ Email verification (FREE — Gmail SMTP, same as password reset).
+        // The account is NOT created yet: we hold the signup details here
+        // and only write to the database once the OTP sent to their email
+        // is confirmed via POST /api/auth/register/verify-otp below.
+        const otp = Math.floor(100000 + Math.random() * 900000).toString();
+        pendingRegistrations[email] = {
+          otp,
+          expires: Date.now() + 10 * 60 * 1000,
+          attempts: 0,
           name,
           email,
           phone,
-          password: hashedPassword,
+          hashedPassword,
           role,
           address,
           city,
+          shopName: req.body.shopName,
+        };
+
+        try {
+          await sendSignupOTP(email, otp, name);
+        } catch (emailError) {
+          console.log(`📧 Signup email failed, OTP: ${otp}`);
+        }
+
+        res.status(200).json({
+          requiresOtp: true,
+          email,
+          message: "OTP sent to your email. Please verify to finish creating your account.",
+        });
+      } catch (error: any) {
+        res.status(500).json({ message: error.message });
+      }
+    }
+  );
+
+  // ✅ NEW: step 2 of signup — confirm the email OTP, then actually create
+  // the User (+ Seller, if applicable) and log them in, same response shape
+  // the old single-step /api/auth/register used to return.
+  // ✅ NEW: resend the signup OTP without re-submitting the whole form or a
+  // captcha token — reusing a Turnstile token here would fail since Cloudflare
+  // tokens are single-use, and re-solving isn't needed for a plain resend.
+  app.post(
+    "/api/auth/register/resend-otp",
+    [body("email").isEmail()],
+    async (req, res) => {
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        return res.status(400).json({ errors: errors.array() });
+      }
+
+      try {
+        const email = String(req.body.email || "").trim().toLowerCase();
+        const pending = pendingRegistrations[email];
+
+        if (!pending) {
+          return res.status(400).json({ message: "No pending registration found. Please sign up again." });
+        }
+
+        const otp = Math.floor(100000 + Math.random() * 900000).toString();
+        pending.otp = otp;
+        pending.expires = Date.now() + 10 * 60 * 1000;
+        pending.attempts = 0;
+
+        try {
+          await sendSignupOTP(email, otp, pending.name);
+        } catch (emailError) {
+          console.log(`📧 Resend signup email failed, OTP: ${otp}`);
+        }
+
+        res.json({ message: "OTP resent to your email" });
+      } catch (error: any) {
+        res.status(500).json({ message: error.message });
+      }
+    }
+  );
+
+  app.post(
+    "/api/auth/register/verify-otp",
+    [body("email").isEmail(), body("otp").isLength({ min: 6, max: 6 })],
+    async (req, res) => {
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        return res.status(400).json({ errors: errors.array() });
+      }
+
+      try {
+        const email = String(req.body.email || "").trim().toLowerCase();
+        const { otp } = req.body;
+        const pending = pendingRegistrations[email];
+
+        if (!pending) {
+          return res.status(400).json({ message: "No pending registration found. Please sign up again." });
+        }
+
+        if (Date.now() > pending.expires) {
+          delete pendingRegistrations[email];
+          return res.status(400).json({ message: "OTP expired. Please sign up again." });
+        }
+
+        if (pending.attempts >= MAX_OTP_ATTEMPTS) {
+          delete pendingRegistrations[email];
+          return res.status(429).json({ message: "Too many incorrect attempts. Please sign up again." });
+        }
+
+        if (pending.otp !== otp) {
+          pending.attempts += 1;
+          return res.status(400).json({ message: "Invalid OTP" });
+        }
+
+        // Double-check nobody else registered this email while the OTP was pending.
+        const existingUser = await storage.getUserByEmail(email);
+        if (existingUser) {
+          delete pendingRegistrations[email];
+          return res.status(400).json({ message: "Email already registered" });
+        }
+
+        const user = await storage.createUser({
+          name: pending.name,
+          email: pending.email,
+          phone: pending.phone,
+          password: pending.hashedPassword,
+          role: pending.role,
+          address: pending.address,
+          city: pending.city,
         });
 
         let seller = null;
-        if (role === "seller") {
+        if (pending.role === "seller") {
           seller = await storage.createSeller({
             userId: user._id,
-            shopName: req.body.shopName || `${name}'s Kitchen`,
-            address: address,
-            city: city,
-            contactNumber: phone,
+            shopName: pending.shopName || `${pending.name}'s Kitchen`,
+            address: pending.address,
+            city: pending.city,
+            contactNumber: pending.phone,
             status: "pending",
-            isTopRated: false, // ✅ Default value
+            isTopRated: false,
           });
         }
 
+        delete pendingRegistrations[email];
+
         const token = jwt.sign({ userId: user._id, role: user.role }, getJWTSecret(), {
-          // ✅ Long-lived session token — customers/sellers should stay
-          // logged in until they explicitly log out, not get silently
-          // signed out after a week.
           expiresIn: "365d",
         });
 
@@ -510,16 +743,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
 
     try {
-      // ⚠️ Turnstile enforcement disabled for now — see the matching note
-      // on the register route above.
-      // if (process.env.TURNSTILE_SECRET_KEY) {
-      //   const captchaOk = await verifyTurnstile(req.body.turnstileToken);
-      //   if (!captchaOk) {
-      //     return res.status(400).json({ message: "Captcha verification failed. Please try again." });
-      //   }
-      // }
+      // ✅ CAPTCHA (Cloudflare Turnstile — free, unlimited).
+      if (process.env.TURNSTILE_SECRET_KEY) {
+        const captchaOk = await verifyTurnstile(req.body.turnstileToken);
+        if (!captchaOk) {
+          return res.status(400).json({ message: "Captcha verification failed. Please try again." });
+        }
+      }
 
-      const { email, password} = req.body;
+      const { password} = req.body;
+      const email = String(req.body.email || "").trim().toLowerCase();
 
       // Get user from database
       const user = await storage.getUserByEmail(email);
@@ -595,7 +828,7 @@ app.post(
         return res.status(400).json({ errors: errors.array() });
       }
 
-      const { email } = req.body;
+      const email = String(req.body.email || "").trim().toLowerCase();
       
       console.log(`\n🔐 FORGOT PASSWORD: ${email}`);
       
@@ -645,7 +878,8 @@ app.post(
         return res.status(400).json({ errors: errors.array() });
       }
 
-      const { email, otp } = req.body;
+      const email = String(req.body.email || "").trim().toLowerCase();
+      const { otp } = req.body;
       
       console.log(`\n🔐 VERIFY OTP: ${email}`);
       
@@ -689,7 +923,8 @@ app.post(
         return res.status(400).json({ errors: errors.array() });
       }
 
-      const { email, otp, newPassword } = req.body;
+      const { otp, newPassword } = req.body;
+      const email = String(req.body.email || "").trim().toLowerCase();
       
       console.log(`\n🔄 RESET PASSWORD: ${email}`);
       
@@ -706,7 +941,6 @@ app.post(
       }
       
       console.log(`👤 User: ${user.name}`);
-      console.log(`🆕 New Password: ${newPassword}`);
       
       // Hash the password
       const hashedPassword = await bcrypt.hash(newPassword, 10);
@@ -1009,89 +1243,16 @@ app.post("/api/orders/calculate-price", authenticateToken, async (req: AuthReque
       await storage.incrementCouponUsage(bookingData.couponCode);
     }
 
+    // ✅ REAL-TIME: push the new order to the Seller Dashboard instantly.
+    // Kept outside the email/notification logic below so a slow or
+    // failing email send never delays or blocks the live update.
     try {
-      const tiffin = await storage.getTiffinById(req.body.tiffinId);
-      if (tiffin) {
-        const seller = await storage.getSellerById(tiffin.sellerId);
-        if (seller) {
-          // ✅ REAL-TIME: push the new order to the Seller Dashboard instantly.
-          // Kept outside the email/notification logic below so a slow or
-          // failing email send never delays or blocks the live update.
-          try {
-            emitNewOrderToSeller(seller._id, booking);
-          } catch (socketError) {
-            console.warn("⚠️ Real-time new-order emit failed:", socketError);
-          }
-
-          const sellerUser = await storage.getUserById(seller.userId);
-          if (sellerUser) {
-            
-            const orderDetails = {
-              customerName: booking.customerName,
-              customerEmail: booking.customerEmail,
-              customerPhone: booking.customerPhone,
-              customerAddress: booking.customerAddress,
-              customerCity: booking.customerCity,
-              tiffinTitle: tiffin.title,
-              bookingType: booking.bookingType,
-              quantity: booking.quantity,
-              totalPrice: booking.totalPrice,
-              deliveryDate: booking.date,
-              slot: booking.slot,
-              deliveryAddress: booking.deliveryAddress,
-              addOns: booking.addOns,
-              weeklyCustomizations: booking.weeklyCustomizations,
-              selectedDays: booking.selectedDays,
-              customization: booking.customization,
-              orderId: booking._id.toString().slice(-8),
-              discountAmount: booking.discountAmount || 0,
-              couponCode: booking.couponCode || null,
-              subtotal: (booking.basePrice || 0) + (booking.addOnsPrice || 0) + (booking.deliveryCharge || 0)
-            };
-
-const sellerDashboardLink = `${process.env.FRONTEND_URL || 'http://localhost:5000'}/seller/dashboard`;
-
-// ✅ 1. EMAIL - GUARANTEED DELIVERY
-await sendOrderNotificationToSeller(sellerUser.email, orderDetails, sellerDashboardLink);
-
-// ✅ 2. TELEGRAM - BONUS (IF AVAILABLE)
-try {
-  const { sendOrderNotification } = require('./server');
-  await sendOrderNotification({
-    ...orderDetails,
-    sellerEmail: sellerUser.email
-  });
-  console.log('✅ Telegram notification sent');
-} catch (error) {
-  // Telegram fail hua toh koi issue nahi, email toh chala gaya
-  console.log('ℹ️ Telegram not available, but email sent successfully');
-}
-
-            await sendEmailSafely(
-              () => sendBookingConfirmationToCustomer(
-                user.email,
-                user.name,
-                tiffin.title,
-                sellerUser.name,
-                seller.contactNumber,
-                booking.date,
-                booking.slot,
-                booking.quantity,
-                booking.totalPrice,
-                booking.discountAmount || 0,
-                booking.couponCode || null,
-                booking.addOns || [],
-                booking.weeklyCustomizations || [],
-                booking.selectedDays || [],
-                booking.customization || ""
-              ),
-              "booking confirmation to customer"
-            );
-          }
-        }
+      const tiffinForSocket = await storage.getTiffinById(req.body.tiffinId);
+      if (tiffinForSocket) {
+        emitNewOrderToSeller(tiffinForSocket.sellerId, booking);
       }
-    } catch (emailError) {
-      console.warn("⚠️ Email sending failed, but booking was created:", emailError);
+    } catch (socketError) {
+      console.warn("⚠️ Real-time new-order emit failed:", socketError);
     }
 
     // 🎁 Order successful — automatically credit 5 reward tokens to the customer's wallet.
@@ -1100,11 +1261,19 @@ try {
       `Order reward — ${(booking as any)._id?.toString().slice(-8) || ""}`
     );
 
+    // ✅ PERFORMANCE: respond to the customer as soon as the order exists —
+    // exactly the same "fast payment processing" pattern as /api/cart/checkout.
+    // Seller/customer emails + Telegram are outbound calls that can take
+    // seconds; they must never sit on the critical path of "place order".
     res.status(201).json({
       ...booking,
       rewardTokens: ORDER_REWARD_TOKENS,
       walletBalance: newWalletBalance,
       message: `Order placed successfully! 5 tokens transferred to your wallet 🎉`,
+    });
+
+    notifyForSingleBooking(booking, user, req.body.tiffinId).catch((err) => {
+      console.warn("⚠️ Background order notification failed (booking was already created):", err);
     });
   } catch (error: any) {
     console.error("❌ Error creating booking:", error);
@@ -1195,6 +1364,72 @@ try {
       });
     } catch (error: any) {
       console.error("❌ Error rating delivery day:", error);
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // ✅ NEW: Customer writes a customization note for tomorrow's delivery day
+  // ("ek din pehle subscription me jaake next day ke liye customization likh
+  // sake"). Only the day that is exactly tomorrow, and still Pending, can be
+  // edited — enforced by isCustomizableForTomorrow(). The seller sees it
+  // instantly via the same real-time channel used for cancellations.
+  app.patch("/api/bookings/:id/schedule/:entryId/customize", authenticateToken, [
+    body("note").isString().trim().isLength({ min: 1, max: 300 }),
+  ], async (req: AuthRequest, res) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ errors: errors.array() });
+    }
+
+    try {
+      const booking = await storage.getBooking(req.params.id);
+      if (!booking) {
+        return res.status(404).json({ message: "Booking not found" });
+      }
+
+      if (booking.customerId?.toString() !== req.userId?.toString()) {
+        return res.status(403).json({ message: "Not authorized to customize this subscription" });
+      }
+
+      if (booking.bookingType !== "weekly" && booking.bookingType !== "monthly") {
+        return res.status(400).json({ message: "This booking is not a weekly/monthly subscription" });
+      }
+
+      const liveSchedule = withLiveStatus((booking as any).deliverySchedule || [], booking.status);
+      const entry = liveSchedule.find((d: any) => d._id?.toString() === req.params.entryId);
+
+      if (!entry) {
+        return res.status(404).json({ message: "Delivery day not found" });
+      }
+
+      if (!isCustomizableForTomorrow(entry.date, entry.status)) {
+        return res.status(400).json({
+          message: "You can only add a customization the day before that delivery — this day isn't tomorrow, or it's already been delivered/missed.",
+        });
+      }
+
+      const { note } = req.body;
+      const updatedBooking = await storage.addDeliveryDayCustomization(req.params.id, req.params.entryId, note.trim());
+
+      if (!updatedBooking) {
+        return res.status(404).json({ message: "Delivery day not found" });
+      }
+
+      // ✅ REAL-TIME: seller sees the customization the moment it's saved.
+      if (booking.sellerId) {
+        try {
+          emitOrderUpdateToSeller(booking.sellerId, updatedBooking);
+        } catch (socketError) {
+          console.warn("⚠️ Real-time customization emit failed:", socketError);
+        }
+      }
+
+      res.json({
+        ...updatedBooking,
+        deliverySchedule: withLiveStatus((updatedBooking as any).deliverySchedule || [], updatedBooking.status),
+      });
+    } catch (error: any) {
+      console.error("❌ Error saving day customization:", error);
       res.status(500).json({ message: error.message });
     }
   });
@@ -1810,11 +2045,12 @@ app.put("/api/seller/tiffins/:id", authenticateToken, requireRole("seller"), asy
   });
 
 
-   // ✅ UPDATED CANCEL BOOKING ROUTE - WITH PHONE NUMBER
-app.post("/api/bookings/:id/cancel", async (req: Request, res: Response) => {
+   // ✅ UPDATED CANCEL BOOKING ROUTE — 30 second window for single/trial orders,
+   // anytime for weekly/monthly subscriptions (managed from the Subscription page).
+app.post("/api/bookings/:id/cancel", authenticateToken, async (req: AuthRequest, res: Response) => {
   try {
     const { id: bookingId } = req.params;
-    const { reason = "Cancelled by customer" } = req.body;
+    const { reason = "Cancelled by user" } = req.body;
 
     console.log('🎯 Cancelling booking ID:', bookingId);
 
@@ -1829,10 +2065,14 @@ app.post("/api/bookings/:id/cancel", async (req: Request, res: Response) => {
       return res.status(404).json({ error: 'Booking not found' });
     }
 
+    if (booking.customerId?.toString() !== req.userId?.toString()) {
+      return res.status(403).json({ error: 'Not authorized to cancel this booking' });
+    }
+
     console.log('📦 Found booking:', {
       id: booking._id,
       customerName: booking.customerName,
-      customerPhone: booking.customerPhone, // ✅ PHONE NUMBER LOGGED
+      customerPhone: booking.customerPhone,
       status: booking.status,
       createdAt: booking.createdAt
     });
@@ -1841,17 +2081,24 @@ app.post("/api/bookings/:id/cancel", async (req: Request, res: Response) => {
       return res.status(400).json({ error: 'Booking is already cancelled' });
     }
 
-    // Check 1-minute cancellation window
-    const bookingTime = new Date(booking.createdAt).getTime();
-    const currentTime = new Date().getTime();
-    const minutesDiff = (currentTime - bookingTime) / (1000 * 60);
+    // ✅ Weekly/monthly subscriptions can be cancelled anytime from the
+    // Subscription section — the 30-second window only applies to
+    // single/trial orders (see CANCEL_WINDOW_SECONDS below).
+    const isSubscription = booking.bookingType === 'weekly' || booking.bookingType === 'monthly';
 
-    console.log('⏰ Time difference:', minutesDiff, 'minutes');
+    if (!isSubscription) {
+      const CANCEL_WINDOW_SECONDS = 30;
+      const bookingTime = new Date(booking.createdAt).getTime();
+      const currentTime = new Date().getTime();
+      const secondsDiff = (currentTime - bookingTime) / 1000;
 
-    if (minutesDiff > 1) {
-      return res.status(400).json({ 
-        error: `Cancellation period has expired (1 minute). Time passed: ${Math.round(minutesDiff * 60)} seconds` 
-      });
+      console.log('⏰ Time since order placed:', Math.round(secondsDiff), 'seconds');
+
+      if (secondsDiff > CANCEL_WINDOW_SECONDS) {
+        return res.status(400).json({
+          error: `Cancellation window has expired (${CANCEL_WINDOW_SECONDS} seconds). Time passed: ${Math.round(secondsDiff)} seconds`
+        });
+      }
     }
 
     // Update booking status to cancelled
@@ -1877,45 +2124,49 @@ app.post("/api/bookings/:id/cancel", async (req: Request, res: Response) => {
       }
     }
 
-    // ✅ Send cancellation email to seller WITH PHONE NUMBER
-    if (booking.sellerId) {
-      try {
-        console.log('📧 Sending cancellation email with phone number...');
-        const seller = await storage.getSellerById(booking.sellerId);
-        
-        if (seller) {
-          const sellerUser = await storage.getUserById(seller.userId);
-          
-          if (sellerUser && sellerUser.email) {
-            const tiffin = await storage.getTiffinById(booking.tiffinId);
-            const tiffinTitle = tiffin?.title || 'Tiffin Service';
-
-            await sendOrderCancellationToSeller(
-              sellerUser.email,
-              seller.shopName || 'Seller',
-              booking.customerName,
-              booking.customerPhone, // ✅ PHONE NUMBER PASSED
-              tiffinTitle,
-              booking._id.toString().slice(-8),
-              new Date(booking.createdAt).toLocaleString('en-IN'),
-              new Date().toLocaleString('en-IN'),
-              booking.totalPrice
-            );
-            
-            console.log('📧 Cancellation email sent successfully with customer phone number');
-          }
-        }
-      } catch (emailError) {
-        console.error('📧 Email sending failed:', emailError);
-        // Don't fail the cancellation if email fails
-      }
-    }
-
+    // ✅ Respond immediately — cancellation email is sent in the background
+    // afterwards so the customer never waits on outbound SMTP.
     res.json({
       success: true,
       message: 'Booking cancelled successfully',
       booking: updatedBooking
     });
+
+    // ✅ Send cancellation email to seller WITH PHONE NUMBER (best-effort, non-blocking)
+    if (booking.sellerId) {
+      (async () => {
+        try {
+          console.log('📧 Sending cancellation email with phone number...');
+          const seller = await storage.getSellerById(booking.sellerId);
+
+          if (seller) {
+            const sellerUser = await storage.getUserById(seller.userId);
+
+            if (sellerUser && sellerUser.email) {
+              const tiffin = await storage.getTiffinById(booking.tiffinId);
+              const tiffinTitle = tiffin?.title || 'Tiffin Service';
+
+              await sendOrderCancellationToSeller(
+                sellerUser.email,
+                seller.shopName || 'Seller',
+                booking.customerName,
+                booking.customerPhone,
+                tiffinTitle,
+                booking._id.toString().slice(-8),
+                new Date(booking.createdAt).toLocaleString('en-IN'),
+                new Date().toLocaleString('en-IN'),
+                booking.totalPrice
+              );
+
+              console.log('📧 Cancellation email sent successfully with customer phone number');
+            }
+          }
+        } catch (emailError) {
+          console.error('📧 Email sending failed:', emailError);
+          // Don't fail the cancellation if email fails
+        }
+      })();
+    }
 
   } catch (error: any) {
     console.error('❌ Cancellation error:', error);
@@ -2117,121 +2368,8 @@ app.get("/api/tiffins", async (req, res) => {
     }
   });
 
-  // ✅ CANCEL BOOKING ROUTE - Add this in your routes.ts
-app.post("/api/bookings/:id/cancel", authenticateToken, async (req: AuthRequest, res) => {
-  try {
-    const { id: bookingId } = req.params;
-    const { reason = "Cancelled by user" } = req.body;
-
-    console.log('🎯 Cancelling booking ID:', bookingId);
-
-    if (!bookingId) {
-      return res.status(400).json({ error: 'Booking ID required' });
-    }
-
-    // Get booking details
-    const booking = await storage.getBooking(bookingId);
-    console.log('📦 Found booking:', {
-      id: booking?._id,
-      sellerId: booking?.sellerId,
-      status: booking?.status,
-      customerName: booking?.customerName
-    });
-
-    if (!booking) {
-      return res.status(404).json({ error: 'Booking not found' });
-    }
-
-    if (booking.status === 'Cancelled') {
-      return res.status(400).json({ error: 'Booking is already cancelled' });
-    }
-
-    // Check 1-minute cancellation window
-    const bookingTime = new Date(booking.createdAt).getTime();
-    const currentTime = new Date().getTime();
-    const minutesDiff = (currentTime - bookingTime) / (1000 * 60);
-
-    console.log('⏰ Time difference:', minutesDiff, 'minutes');
-
-    if (minutesDiff > 1) {
-      return res.status(400).json({ error: 'Cancellation period has expired (1 minute)' });
-    }
-
-    // Update booking status to cancelled
-    const updatedBooking = await storage.updateBooking(bookingId, {
-      status: 'Cancelled',
-      cancellationReason: reason,
-      cancelledBy: 'customer',
-      cancelledAt: new Date().toISOString(),
-    });
-
-    if (!updatedBooking) {
-      return res.status(500).json({ error: 'Failed to update booking status' });
-    }
-
-    console.log('✅ Booking cancelled successfully:', updatedBooking);
-
-    // ✅ REAL-TIME: let the seller's dashboard reflect the cancellation instantly.
-    if (booking.sellerId) {
-      try {
-        emitOrderUpdateToSeller(booking.sellerId, updatedBooking);
-      } catch (socketError) {
-        console.warn("⚠️ Real-time cancellation emit failed:", socketError);
-      }
-    }
-
-    // ✅ Send cancellation email to seller
-    if (booking.sellerId) {
-      try {
-        console.log('📧 Looking for seller with ID:', booking.sellerId);
-        
-        const seller = await storage.getSellerById(booking.sellerId);
-        console.log('👨‍🍳 Found seller:', seller);
-
-        if (seller) {
-          const sellerUser = await storage.getUserById(seller.userId);
-          console.log('👤 Seller user:', sellerUser);
-
-          if (sellerUser && sellerUser.email) {
-            const sellerEmail = sellerUser.email;
-            console.log('📧 Sending cancellation email to:', sellerEmail);
-            
-            // Get tiffin details for email
-            const tiffin = await storage.getTiffinById(booking.tiffinId);
-            const tiffinTitle = tiffin?.title || 'Tiffin Service';
-
-            await sendOrderCancellationToSeller(
-              sellerEmail,
-              seller.shopName || 'Seller',
-              booking.customerName,
-              booking.customerPhone,
-              tiffinTitle,
-              booking._id.toString().slice(-8), // Short order ID
-              new Date(booking.createdAt).toLocaleString('en-IN'),
-              new Date().toLocaleString('en-IN'),
-              booking.totalPrice
-            );
-            
-            console.log('📧 Cancellation email sent successfully');
-          }
-        }
-      } catch (emailError) {
-        console.error('📧 Email sending failed:', emailError);
-        // Don't fail the cancellation if email fails
-      }
-    }
-
-    res.json({
-      success: true,
-      message: 'Booking cancelled successfully',
-      booking: updatedBooking
-    });
-
-  } catch (error: any) {
-    console.error('❌ Cancellation error:', error);
-    res.status(500).json({ error: 'Internal server error' });
-  }
-});
+  // (Duplicate cancel-booking route removed — a single authenticated handler
+  // above at POST /api/bookings/:id/cancel now covers this.)
 
   // Update seller status route
   app.put("/api/admin/sellers/:id/status", authenticateToken, requireRole("admin"), async (req: AuthRequest, res) => {

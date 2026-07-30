@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation } from "@tanstack/react-query";
-import { Link, useSearch } from "wouter";
+import { Link, useSearch, useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
@@ -14,10 +14,26 @@ import { ArrowLeft, Shield, UtensilsCrossed } from "lucide-react";
 
 export default function VerifyOTP() {
   const { toast } = useToast();
+  const [, setLocation] = useLocation();
   const searchParams = new URLSearchParams(useSearch());
   const email = searchParams.get('email') || "";
   const [timer, setTimer] = useState(300); // 5 minutes
   const [canResend, setCanResend] = useState(false);
+
+  // ✅ BUG FIX: previously, if this page was opened without ?email=, the
+  // form's hidden email field failed zod validation silently — clicking
+  // "Verify OTP" just did nothing with no visible error. Catch it here.
+  useEffect(() => {
+    if (!email) {
+      toast({
+        title: "Missing email",
+        description: "Please restart the password reset process.",
+        variant: "destructive",
+      });
+      setLocation("/forgot-password");
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [email]);
 
   const form = useForm<VerifyOTPData>({
     resolver: zodResolver(verifyOTPSchema),
@@ -27,16 +43,20 @@ export default function VerifyOTP() {
     },
   });
 
-  // Countdown timer
+  // ✅ EFFICIENCY FIX: the old effect depended on [timer], so it tore down
+  // and recreated a new setInterval every single second. One interval,
+  // set up once for the page's lifetime, is enough — it just stops
+  // decrementing once it reaches 0, so a later Resend (which resets timer
+  // back to 300) keeps counting down correctly too.
   useEffect(() => {
-    if (timer > 0) {
-      const interval = setInterval(() => {
-        setTimer((prev) => prev - 1);
-      }, 1000);
-      return () => clearInterval(interval);
-    } else {
-      setCanResend(true);
-    }
+    const interval = setInterval(() => {
+      setTimer((prev) => (prev > 0 ? prev - 1 : 0));
+    }, 1000);
+    return () => clearInterval(interval);
+  }, []);
+
+  useEffect(() => {
+    setCanResend(timer === 0);
   }, [timer]);
 
   const verifyOTPMutation = useMutation({
@@ -49,7 +69,7 @@ export default function VerifyOTP() {
         description: "You can now reset your password",
       });
       // Redirect to reset password page
-      window.location.href = `/reset-password?email=${encodeURIComponent(email)}&otp=${encodeURIComponent(form.watch('otp'))}`;
+      setLocation(`/reset-password?email=${encodeURIComponent(email)}&otp=${encodeURIComponent(form.watch('otp'))}`);
     },
     onError: (error: any) => {
       toast({

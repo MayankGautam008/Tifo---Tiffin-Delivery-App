@@ -62,6 +62,8 @@ export interface LiveDeliveryDay {
   rating?: number;
   review?: string;
   ratedAt?: Date;
+  customizationNote?: string;
+  customizedAt?: Date;
 }
 
 /**
@@ -105,6 +107,29 @@ export function withLiveStatus(
       rating: entry.rating,
       review: entry.review,
       ratedAt: entry.ratedAt,
+      customizationNote: entry.customizationNote,
+      customizedAt: entry.customizedAt,
     };
   });
+}
+
+/**
+ * ✅ NEW: "ek din pehle customization likh sakte ho" rule — a delivery day's
+ * note can only be added/edited when that day is exactly tomorrow (relative
+ * to right now) and the day is still Pending. Kept as one shared function so
+ * the route and any future UI-side check use the identical rule.
+ */
+export function isCustomizableForTomorrow(entryDate: Date | string, entryStatus: string): boolean {
+  if (entryStatus !== "Pending") return false;
+
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  const tomorrow = new Date(today);
+  tomorrow.setDate(today.getDate() + 1);
+
+  const entry = new Date(entryDate);
+  entry.setHours(0, 0, 0, 0);
+
+  return entry.getTime() === tomorrow.getTime();
 }

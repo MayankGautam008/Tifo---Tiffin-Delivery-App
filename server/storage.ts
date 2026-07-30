@@ -82,6 +82,12 @@ export interface IStorage {
     rating: number,
     comment?: string
   ): Promise<SharedBooking | null>;
+  // ✅ NEW: customer writes a note for the next day's delivery
+  addDeliveryDayCustomization(
+    bookingId: string,
+    entryId: string,
+    note: string
+  ): Promise<SharedBooking | null>;
   // ✅ NEW: seller manually marks one delivery day as Pending / Delivered / Missed
   updateDeliveryDayStatus(
     bookingId: string,
@@ -166,7 +172,10 @@ async updateSeller(sellerId: string, updateData: Partial<SharedSeller>): Promise
   async getUserByEmail(email: string): Promise<SharedUser | null> {
     // ✅ PERFORMANCE: .lean() skips hydrating a full Mongoose document since
     // this is a plain read — callers only ever read fields off the result.
-    const user = await User.findOne({ email }).lean();
+    // ✅ BUG FIX: normalize casing/whitespace so "User@Gmail.com" and
+    // "user@gmail.com" resolve to the same account.
+    const normalizedEmail = email.trim().toLowerCase();
+    const user = await User.findOne({ email: normalizedEmail }).lean();
     return toObject<SharedUser>(user);
   }
 
@@ -532,6 +541,28 @@ async updateSeller(sellerId: string, updateData: Partial<SharedSeller>): Promise
     entry.rating = rating;
     entry.review = comment || "";
     entry.ratedAt = new Date();
+
+    await booking.save();
+    return toObject<SharedBooking>(booking);
+  }
+
+  // ✅ NEW: customer writes a note for one specific upcoming delivery day
+  // (only ever called by the route after it has verified the day is "tomorrow")
+  async addDeliveryDayCustomization(
+    bookingId: string,
+    entryId: string,
+    note: string
+  ): Promise<SharedBooking | null> {
+    if (!mongoose.Types.ObjectId.isValid(bookingId)) return null;
+
+    const booking = await Booking.findById(bookingId);
+    if (!booking) return null;
+
+    const entry = (booking.deliverySchedule as any).id(entryId);
+    if (!entry) return null;
+
+    entry.customizationNote = note;
+    entry.customizedAt = new Date();
 
     await booking.save();
     return toObject<SharedBooking>(booking);

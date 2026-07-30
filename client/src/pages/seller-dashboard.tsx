@@ -58,6 +58,7 @@ import {
   Store,
   ChevronRight,
   LogOut,
+  NotebookPen,
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -363,6 +364,13 @@ function OrderDetails({ booking, onClose }: { booking: BookingWithDetails; onClo
                 </div>
               )}
 
+              {booking.status === "Cancelled" && (booking as any).cancellationReason && (
+                <div className="bg-red-50 border border-red-100 rounded-lg p-3">
+                  <p className="text-sm font-medium mb-1 text-red-800">Cancellation reason</p>
+                  <p className="text-sm text-red-700">{(booking as any).cancellationReason}</p>
+                </div>
+              )}
+
               {booking.customization && (
                 <div className="bg-muted/50 rounded-lg p-3 border">
                   <p className="text-sm font-medium mb-1">Special instructions</p>
@@ -576,6 +584,7 @@ interface SellerDeliveryDay {
   date: string;
   day: string;
   status: "Pending" | "Delivered" | "Missed";
+  customizationNote?: string;
 }
 
 interface SellerSubscriptionBooking {
@@ -586,6 +595,7 @@ interface SellerSubscriptionBooking {
   date: string;
   status: string;
   selectedDays?: string[];
+  cancellationReason?: string;
   tiffin?: { title?: string };
   deliverySchedule: SellerDeliveryDay[];
 }
@@ -655,6 +665,7 @@ function SellerSubscriptionCard({ sub }: { sub: SellerSubscriptionBooking }) {
   const delivered = schedule.filter((d) => d.status === "Delivered").length;
   const missed = schedule.filter((d) => d.status === "Missed").length;
   const total = schedule.length;
+  const isCancelled = sub.status === "Cancelled";
 
   return (
     <Card className="border-card-border">
@@ -669,13 +680,20 @@ function SellerSubscriptionCard({ sub }: { sub: SellerSubscriptionBooking }) {
             <Badge variant="outline" className="capitalize text-xs">
               {sub.bookingType}
             </Badge>
+            {isCancelled && (
+              <Badge className="text-xs bg-red-50 text-red-700 border-red-200">Cancelled</Badge>
+            )}
           </div>
           <p className="text-xs md:text-sm text-muted-foreground truncate">
             {sub.tiffin?.title} · {sub.customerPhone}
           </p>
-          <p className="text-xs text-muted-foreground mt-0.5">
-            {delivered}/{total} delivered{missed > 0 ? ` · ${missed} missed` : ""}
-          </p>
+          {isCancelled ? (
+            <p className="text-xs text-red-600 mt-0.5">{sub.cancellationReason || "Cancelled by user"}</p>
+          ) : (
+            <p className="text-xs text-muted-foreground mt-0.5">
+              {delivered}/{total} delivered{missed > 0 ? ` · ${missed} missed` : ""}
+            </p>
+          )}
         </div>
         <ChevronRight className={`w-4 h-4 text-muted-foreground shrink-0 transition-transform ${expanded ? "rotate-90" : ""}`} />
       </button>
@@ -686,17 +704,23 @@ function SellerSubscriptionCard({ sub }: { sub: SellerSubscriptionBooking }) {
             <p className="text-sm text-muted-foreground">No delivery days found for this subscription.</p>
           ) : (
             schedule.map((entry) => (
-              <div
-                key={entry._id}
-                className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 p-2.5 rounded-lg bg-muted/50"
-              >
-                <div>
-                  <p className="text-sm font-medium">{entry.day}</p>
-                  <p className="text-xs text-muted-foreground">
-                    {new Date(entry.date).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}
-                  </p>
+              <div key={entry._id} className="p-2.5 rounded-lg bg-muted/50 space-y-2">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                  <div>
+                    <p className="text-sm font-medium">{entry.day}</p>
+                    <p className="text-xs text-muted-foreground">
+                      {new Date(entry.date).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}
+                    </p>
+                  </div>
+                  <DayStatusButtons bookingId={sub._id} entry={entry} />
                 </div>
-                <DayStatusButtons bookingId={sub._id} entry={entry} />
+                {/* ✅ NEW: customer's note for that day, written one day ahead */}
+                {entry.customizationNote && (
+                  <div className="flex items-start gap-1.5 bg-blue-50 border border-blue-100 rounded-md px-2 py-1.5">
+                    <NotebookPen className="w-3.5 h-3.5 text-blue-600 mt-0.5 flex-shrink-0" />
+                    <p className="text-xs text-blue-700">{entry.customizationNote}</p>
+                  </div>
+                )}
               </div>
             ))
           )}
@@ -806,6 +830,14 @@ function SingleOrderCard({
             </Badge>
           )}
         </div>
+
+        {/* ✅ NEW: cancellation reason, e.g. "Cancelled by user" */}
+        {booking.status === "Cancelled" && (booking as any).cancellationReason && (
+          <div className="flex items-start gap-1.5 bg-red-50 border border-red-100 rounded-lg px-2.5 py-1.5">
+            <AlertCircle className="w-3.5 h-3.5 text-red-600 mt-0.5 flex-shrink-0" />
+            <p className="text-xs text-red-700">{(booking as any).cancellationReason}</p>
+          </div>
+        )}
 
         <div className="flex items-center justify-between pt-2 border-t">
           <div className="text-base font-semibold">

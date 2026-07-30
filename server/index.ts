@@ -37,7 +37,7 @@ app.use(helmet({
 app.use(cors({
   origin: process.env.NODE_ENV === 'production' 
     ? ['https://yourdomain.com'] 
-    : ['http://localhost:3000', 'http://localhost:5000', 'http://0.0.0.0:5000'],
+    : ['http://localhost:3000', 'http://localhost:5000'],
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH'],
   allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With']
@@ -80,6 +80,9 @@ const authLimiter = rateLimit({
 });
 
 // ✅ Extra layer on top of the general limiter for the checkout endpoint
+// specifically — this is the one place a script hammering the API can both
+// spam the database with orders and (before the price fix) cause real money
+// loss, so it gets its own tighter limit regardless of the general one.
 const checkoutLimiter = rateLimit({
   windowMs: 60 * 1000,
   max: 20,
@@ -139,7 +142,8 @@ app.use((req: Request, res: Response, next: NextFunction) => {
 // ✅ SIMPLE TELEGRAM BOT SETUP - NO ERRORS
 function setupSimpleTelegramBot() {
   try {
-    // ✅ SECURITY: no hardcoded fallback token
+    // ✅ SECURITY: no hardcoded fallback token — a leaked bot token in source
+    // lets anyone impersonate the bot / read its chats. Must come from env.
     const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
     
     if (!TELEGRAM_BOT_TOKEN) {
@@ -156,6 +160,10 @@ function setupSimpleTelegramBot() {
         return Math.floor(100000 + Math.random() * 900000).toString();
       }
 
+      // ✅ SECURITY FIX: the /code handler used to accept literally any code
+      // ("For now, just accept any code to test") — that's a full auth
+      // bypass on this bot. Pending codes are now tracked per chat with a
+      // 15-minute expiry and checked for a real match before verifying.
       const pendingVerifications = new Map<number, { email: string; code: string; expiresAt: number }>();
       const VERIFICATION_TTL_MS = 15 * 60 * 1000;
 
@@ -176,7 +184,7 @@ function setupSimpleTelegramBot() {
         }
       });
 
-      // Verify command
+      // Verify command - SUPER SIMPLE
       bot.onText(/\/verify (.+)/, async (msg, match) => {
         const chatId = msg.chat.id;
         const email = match![1].trim();
@@ -346,7 +354,7 @@ async function sendTestOrderNotification(chatId: number, orderDetails: any) {
     // ✅ Root route - Vite ke baad
     app.get("/", (req: Request, res: Response) => {
       if (app.get("env") === "development") {
-        res.redirect("/");
+        res.redirect("http://localhost:5000");
       } else {
         res.json({ 
           message: "Tiffin Service API is running!",
@@ -366,15 +374,14 @@ async function sendTestOrderNotification(chatId: number, orderDetails: any) {
       res.status(status).json({ message });
     });
 
-    // ✅ FIXED: Listen on 0.0.0.0 instead of localhost
+    // Start server
     const port = parseInt(process.env.PORT || "5000", 10);
-    const host = "0.0.0.0"; // Changed from "localhost" to "0.0.0.0"
+    const host = "localhost";
 
     server.listen(port, host, () => {
       const msg = `🚀 Server running at http://${host}:${port}`;
       log ? log(msg) : console.log(msg);
       console.log("🌐 Website should be available at: http://localhost:5000");
-      console.log("🌍 Also accessible at: http://0.0.0.0:5000");
       console.log("🤖 Telegram Bot: @TiffoSellerBot");
       console.log("💡 Test the bot by searching '@TiffoSellerBot' on Telegram");
     });

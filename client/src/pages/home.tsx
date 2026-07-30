@@ -663,6 +663,7 @@ export default function Home() {
   const [showMobileMenu, setShowMobileMenu] = useState(false);
   const [location, setLocation] = useLocation();
   const [showImageUpload, setShowImageUpload] = useState(false);
+  const [showComingSoon, setShowComingSoon] = useState(false);
   const [heroImageUrl, setHeroImageUrl] = useState("https://images.unsplash.com/photo-1565299624946-b28f40a0ae38?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&w=800&q=80");
   const [bannerImageUrl, setBannerImageUrl] = useState("https://image2url.com/images/1763986721956-7bc4c565-ef21-4771-9eaa-0dd94be72037.jpeg");
   const [showSearchInput, setShowSearchInput] = useState(false);
@@ -1005,6 +1006,34 @@ export default function Home() {
         </div>
       )}
 
+      {showComingSoon && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="relative bg-white rounded-2xl shadow-xl w-full max-w-sm p-8 text-center">
+            <Button
+              variant="ghost"
+              size="icon"
+              className="absolute top-2 right-2 rounded-full"
+              onClick={() => setShowComingSoon(false)}
+            >
+              <X className="w-4 h-4" />
+            </Button>
+            <div className="w-14 h-14 rounded-full bg-gray-100 flex items-center justify-center mx-auto mb-4">
+              <Clock className="w-7 h-7 text-gray-500" />
+            </div>
+            <h3 className="text-lg font-bold text-gray-900 mb-1">Coming Soon</h3>
+            <p className="text-sm text-gray-500 leading-relaxed">
+              Healthy Meals is currently in the works. We'll let you know as soon as it's available.
+            </p>
+            <Button
+              className="mt-6 w-full rounded-full"
+              onClick={() => setShowComingSoon(false)}
+            >
+              Got it
+            </Button>
+          </div>
+        </div>
+      )}
+
       <section className="relative z-10 bg-[#F8EFDB] rounded-t-2xl shadow-[0_-4px_16px_rgba(0,0,0,0.06)] -mt-4 pt-3 pb-2 sm:pt-4 sm:pb-3 border-t border-gray-100">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex overflow-x-auto hide-scrollbar gap-6 sm:gap-3 pb-1 sm:justify-start">
@@ -1014,7 +1043,7 @@ export default function Home() {
               { title: "Add-ons", subtitle: "Lighter Meals", img: "https://images.unsplash.com/photo-1585937421612-70a008356fbe?w=200&h=200&fit=crop" },
               { title: "Healthy Meals", subtitle: "High Protein, Low-Calorie", img: "https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=200&h=200&fit=crop" },
             ].map((cat) => (
-              <button key={cat.title} onClick={() => handleFoodCategoryClick(cat.title)} className="flex-shrink-0 w-[72px] sm:w-[88px] md:w-[100px] text-left">
+              <button key={cat.title} onClick={() => cat.title === "Healthy Meals" ? setShowComingSoon(true) : handleFoodCategoryClick(cat.title)} className="flex-shrink-0 w-[72px] sm:w-[88px] md:w-[100px] text-left">
                 <div className="w-[72px] h-[72px] sm:w-[88px] sm:h-[88px] md:w-[100px] md:h-[100px] rounded-2xl overflow-hidden border border-gray-200 shadow-sm bg-white">
                   <img src={cat.img} alt={cat.title} className="w-full h-full object-cover" />
                 </div>

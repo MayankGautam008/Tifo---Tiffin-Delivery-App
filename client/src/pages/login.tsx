@@ -11,6 +11,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/lib/auth-context";
 import { apiRequest } from "@/lib/queryClient";
 import { markSellerLandedOnDashboard } from "@/lib/seller-landing";
+import { TurnstileWidget } from "@/components/turnstile-widget";
 import { loginSchema, type LoginCredentials, type AuthResponse } from "@shared/schema";
 import { UtensilsCrossed, Eye, EyeOff, ArrowLeft, Star, Truck, Clock, ShieldCheck } from "lucide-react";
 
@@ -19,6 +20,8 @@ export default function Login() {
   const { login } = useAuth();
   const [, setLocation] = useLocation();
   const [showPassword, setShowPassword] = useState(false);
+  const [turnstileToken, setTurnstileToken] = useState<string | null>(null);
+  const captchaConfigured = Boolean(import.meta.env.VITE_TURNSTILE_SITE_KEY);
 
   const form = useForm<LoginCredentials>({
     resolver: zodResolver(loginSchema),
@@ -33,6 +36,7 @@ export default function Login() {
       const response = await apiRequest<AuthResponse>("POST", "/api/auth/login", {
         email: data.email,
         password: data.password,
+        turnstileToken,
       });
       return response;
     },
@@ -270,10 +274,12 @@ export default function Login() {
                       </Link>
                     </div>
 
+                    <TurnstileWidget onVerify={setTurnstileToken} />
+
                     <Button
                       type="submit"
                       className="w-full h-12 bg-red-600 hover:bg-red-700 text-white font-semibold rounded-xl shadow-lg transition-all duration-200 transform hover:scale-[1.02] disabled:opacity-50"
-                      disabled={loginMutation.isPending}
+                      disabled={loginMutation.isPending || (captchaConfigured && !turnstileToken)}
                     >
                       {loginMutation.isPending ? (
                         <div className="flex items-center gap-2">

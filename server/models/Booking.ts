@@ -23,6 +23,9 @@ export interface IDeliveryDay {
   rating?: number;
   review?: string;
   ratedAt?: Date;
+  // ✅ NEW: customer can write a note the day before, for the next day's delivery
+  customizationNote?: string;
+  customizedAt?: Date;
 }
 
 export interface IBooking extends Document {
@@ -53,8 +56,14 @@ export interface IBooking extends Document {
   status: "Pending" | "Confirmed" | "Cancelled" | "Delivered";
   bookingType: "single" | "trial" | "weekly" | "monthly";
 
+  // ✅ NEW: Cancellation fields — who cancelled, why, and when. These were
+  // referenced by routes/storage before but missing from this Mongoose
+  // schema, so Mongoose's strict mode was silently dropping them on save.
+  cancellationReason?: string;
+  cancelledBy?: "customer" | "seller" | "system";
+  cancelledAt?: Date;
+
   // ✅ NEW: Payment method chosen at checkout (cash on delivery vs online/UPI)
-  paymentMethod: "cod" | "upi";
   paymentMethod: "cod" | "upi";
 
   // ✅ NEW: Cart checkout tracking - groups multiple items placed together in one payout
@@ -92,6 +101,10 @@ const DeliveryDaySchema = new Schema({
   rating: { type: Number, min: 1, max: 5 },
   review: { type: String, maxlength: 500 },
   ratedAt: { type: Date },
+  // ✅ NEW: customer-written note for that specific day's delivery, editable
+  // only the day before (see PATCH /api/bookings/:id/schedule/:entryId/customize)
+  customizationNote: { type: String, maxlength: 300 },
+  customizedAt: { type: Date },
 });
 
 const BookingSchema = new Schema<IBooking>(
@@ -126,7 +139,6 @@ const BookingSchema = new Schema<IBooking>(
     // ✅ NEW: Payment method (this was previously missing from the schema,
     // so it was silently dropped by Mongoose and never saved to the DB —
     // that's why COD orders weren't showing correctly on the seller dashboard)
-    paymentMethod: { type: String, enum: ["cod", "upi"], default: "upi" },
     paymentMethod: { type: String, enum: ["cod", "upi"], default: "cod" },
 
     // ✅ NEW: groups bookings that were placed together from the cart in one payout

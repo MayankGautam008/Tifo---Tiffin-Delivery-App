@@ -17,6 +17,8 @@ import {
   XCircle,
   Star,
   PackageCheck,
+  Ban,
+  NotebookPen,
 } from "lucide-react";
 
 // Professional subscription management page.
@@ -31,6 +33,7 @@ interface DeliveryDay {
   status: "Pending" | "Delivered" | "Missed";
   rating?: number;
   review?: string;
+  customizationNote?: string;
 }
 
 interface SubscriptionBooking {
@@ -40,9 +43,99 @@ interface SubscriptionBooking {
   date: string;
   totalPrice: number;
   selectedDays?: string[];
+  cancellationReason?: string;
   tiffin?: { title?: string };
   seller?: { shopName?: string };
   deliverySchedule: DeliveryDay[];
+}
+
+// ✅ NEW: is this entry exactly "tomorrow" and still Pending? Mirrors the
+// server's isCustomizableForTomorrow() check in deliveryScheduleService.ts.
+function isTomorrow(dateStr: string, status: DeliveryDay["status"]) {
+  if (status !== "Pending") return false;
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const tomorrow = new Date(today);
+  tomorrow.setDate(today.getDate() + 1);
+  const entry = new Date(dateStr);
+  entry.setHours(0, 0, 0, 0);
+  return entry.getTime() === tomorrow.getTime();
+}
+
+function DayCustomizationRow({ bookingId, entry }: { bookingId: string; entry: DeliveryDay }) {
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
+  const [note, setNote] = useState(entry.customizationNote || "");
+  const [isEditing, setIsEditing] = useState(false);
+
+  const saveMutation = useMutation({
+    mutationFn: async () =>
+      apiRequest("PATCH", `/api/bookings/${bookingId}/schedule/${entry._id}/customize`, { note }),
+    onSuccess: () => {
+      toast({ title: "Saved!", description: "Your note for tomorrow's delivery has been sent to the seller." });
+      setIsEditing(false);
+      queryClient.invalidateQueries({ queryKey: [`/api/bookings/${bookingId}/schedule`] });
+    },
+    onError: (error: Error) => {
+      toast({ title: "Couldn't save note", description: error.message, variant: "destructive" });
+    },
+  });
+
+  if (!isTomorrow(entry.date, entry.status)) return null;
+
+  if (!isEditing && entry.customizationNote) {
+    return (
+      <div className="mt-2 flex items-start gap-2 bg-blue-50 border border-blue-100 rounded-lg p-2.5">
+        <NotebookPen className="w-3.5 h-3.5 text-blue-600 mt-0.5 flex-shrink-0" />
+        <div className="flex-1 min-w-0">
+          <p className="text-xs text-blue-700">{entry.customizationNote}</p>
+        </div>
+        <Button variant="ghost" size="sm" className="h-6 text-xs px-2" onClick={() => setIsEditing(true)}>
+          Edit
+        </Button>
+      </div>
+    );
+  }
+
+  if (!isEditing) {
+    return (
+      <Button
+        variant="outline"
+        size="sm"
+        className="mt-2 bg-blue-50 border-blue-200 text-blue-700 hover:bg-blue-100"
+        onClick={() => setIsEditing(true)}
+      >
+        <NotebookPen className="w-3.5 h-3.5 mr-1.5" />
+        Add note for tomorrow's tiffin
+      </Button>
+    );
+  }
+
+  return (
+    <div className="mt-2 space-y-2 bg-blue-50 rounded-lg p-3 border border-blue-100">
+      <Textarea
+        placeholder="e.g. Less spicy please, no onions..."
+        value={note}
+        onChange={(e) => setNote(e.target.value)}
+        rows={2}
+        maxLength={300}
+        className="resize-none text-sm bg-white"
+      />
+      <div className="flex gap-2">
+        <Button size="sm" variant="outline" onClick={() => setIsEditing(false)} disabled={saveMutation.isPending}>
+          Cancel
+        </Button>
+        <Button
+          size="sm"
+          onClick={() => saveMutation.mutate()}
+          disabled={!note.trim() || saveMutation.isPending}
+          className="bg-blue-600 hover:bg-blue-700"
+        >
+          {saveMutation.isPending ? "Saving..." : "Save note"}
+        </Button>
+      </div>
+    </div>
+  );
 }
 
 function StatusPill({ status }: { status: DeliveryDay["status"] }) {
@@ -173,10 +266,30 @@ export default function SubscriptionDetails() {
   const { id } = useParams();
   const [, setLocation] = useLocation();
   const { isAuthenticated } = useAuth();
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
+  const [showCancelConfirm, setShowCancelConfirm] = useState(false);
 
   const { data: booking, isLoading, error } = useQuery<SubscriptionBooking>({
     queryKey: [`/api/bookings/${id}/schedule`],
     enabled: isAuthenticated && !!id,
+  });
+
+  // ✅ NEW: weekly/monthly subscriptions can be cancelled anytime, right here
+  // in the Subscription section — no 30-second window like single orders.
+  const cancelMutation = useMutation({
+    mutationFn: async () =>
+      apiRequest("POST", `/api/bookings/${id}/cancel`, { reason: "Cancelled by user" }),
+    onSuccess: () => {
+      toast({ title: "Subscription cancelled", description: "Your subscription has been cancelled." });
+      setShowCancelConfirm(false);
+      queryClient.invalidateQueries({ queryKey: [`/api/bookings/${id}/schedule`] });
+      queryClient.invalidateQueries({ queryKey: ["/api/bookings/customer/subscriptions"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/bookings/customer"] });
+    },
+    onError: (error: Error) => {
+      toast({ title: "Couldn't cancel subscription", description: error.message, variant: "destructive" });
+    },
   });
 
   if (!isAuthenticated) {
@@ -189,19 +302,70 @@ export default function SubscriptionDetails() {
   const missedCount = deliverySchedule.filter((d) => d.status === "Missed").length;
   const totalCount = deliverySchedule.length;
   const progressPct = totalCount > 0 ? Math.round((deliveredCount / totalCount) * 100) : 0;
+  const isCancelled = booking?.status === "Cancelled";
 
   return (
     <div className="min-h-screen bg-gray-50">
       <div className="max-w-3xl mx-auto px-3 sm:px-4 py-4 sm:py-8">
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => setLocation("/my-bookings")}
-          className="bg-white border-gray-200 hover:bg-gray-50 shadow-sm rounded-lg text-xs sm:text-sm mb-4 sm:mb-6"
-        >
-          <ArrowLeft className="w-3.5 h-3.5 sm:w-4 sm:h-4 mr-1.5 sm:mr-2" />
-          Back to Orders
-        </Button>
+        <div className="flex items-center justify-between gap-2 mb-4 sm:mb-6">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setLocation("/my-bookings")}
+            className="bg-white border-gray-200 hover:bg-gray-50 shadow-sm rounded-lg text-xs sm:text-sm"
+          >
+            <ArrowLeft className="w-3.5 h-3.5 sm:w-4 sm:h-4 mr-1.5 sm:mr-2" />
+            Back to Orders
+          </Button>
+
+          {booking && !isCancelled && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setShowCancelConfirm((v) => !v)}
+              className="bg-red-50 border-red-200 text-red-700 hover:bg-red-100 hover:text-red-800 shadow-sm rounded-lg text-xs sm:text-sm"
+            >
+              <Ban className="w-3.5 h-3.5 sm:w-4 sm:h-4 mr-1.5 sm:mr-2" />
+              Cancel Subscription
+            </Button>
+          )}
+        </div>
+
+        {showCancelConfirm && !isCancelled && (
+          <Card className="p-4 mb-4 bg-red-50 border-red-200 rounded-xl">
+            <p className="text-sm text-red-800 font-medium mb-1">Cancel this subscription?</p>
+            <p className="text-xs text-red-700 mb-3">
+              Remaining pending deliveries will be cancelled. This can't be undone.
+            </p>
+            <div className="flex gap-2">
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => setShowCancelConfirm(false)}
+                disabled={cancelMutation.isPending}
+              >
+                Keep subscription
+              </Button>
+              <Button
+                size="sm"
+                onClick={() => cancelMutation.mutate()}
+                disabled={cancelMutation.isPending}
+                className="bg-red-600 hover:bg-red-700 text-white"
+              >
+                {cancelMutation.isPending ? "Cancelling..." : "Yes, cancel it"}
+              </Button>
+            </div>
+          </Card>
+        )}
+
+        {isCancelled && (
+          <Card className="p-4 mb-4 bg-gray-100 border-gray-200 rounded-xl flex items-start gap-2">
+            <XCircle className="w-4 h-4 text-gray-600 mt-0.5 flex-shrink-0" />
+            <p className="text-sm text-gray-700">
+              {booking?.cancellationReason || "This subscription has been cancelled."}
+            </p>
+          </Card>
+        )}
 
         {isLoading ? (
           <div className="space-y-3">
@@ -315,6 +479,7 @@ export default function SubscriptionDetails() {
                         <StatusPill status={entry.status} />
                       </div>
                       <DayRatingRow bookingId={booking._id} entry={entry} />
+                      <DayCustomizationRow bookingId={booking._id} entry={entry} />
                     </Card>
                   </div>
                 ))}

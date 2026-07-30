@@ -3,7 +3,25 @@ import { QueryClient, QueryFunction } from "@tanstack/react-query";
 async function throwIfResNotOk(res: Response) {
   if (!res.ok) {
     const text = (await res.text()) || res.statusText;
-    throw new Error(`${res.status}: ${text}`);
+
+    // ✅ BUG FIX: the server responds with JSON like {"message":"Invalid OTP"}
+    // or express-validator's {"errors":[{"msg":"..."}]}. Previously we threw
+    // the raw "400: {\"message\":...}" string, so every error toast in the
+    // app (login, register, OTP verify/resend, etc.) showed unparsed JSON
+    // instead of a readable message. Parse it and extract the real message.
+    let message = text;
+    try {
+      const parsed = JSON.parse(text);
+      if (parsed?.message) {
+        message = parsed.message;
+      } else if (Array.isArray(parsed?.errors) && parsed.errors.length > 0) {
+        message = parsed.errors[0].msg || parsed.errors[0].message || text;
+      }
+    } catch {
+      // Not JSON (e.g. plain text/HTML error page) — fall back to raw text.
+    }
+
+    throw new Error(message);
   }
 }
 

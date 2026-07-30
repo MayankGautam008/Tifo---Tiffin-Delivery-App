@@ -21,15 +21,36 @@ const checkEmailConfig = () => {
 // Email transporter setup
 const createTransporter = () => {
   const { emailUser, emailPass } = checkEmailConfig();
-  
+
   if (!emailUser || !emailPass) {
     console.log('🚨 USING CONSOLE TRANSPORTER - Emails will NOT be sent');
     console.log('💡 TIP: Check .env file in project root and restart server');
     return createConsoleTransporter();
   }
 
-  console.log('✅ USING REAL EMAIL TRANSPORTER - Emails will be sent via Gmail');
-  
+  // ✅ Preferred: a real transactional SMTP relay (Brevo / Resend / SES / Mailgun etc.)
+  // Set EMAIL_HOST + EMAIL_PORT in .env to use this path instead of raw Gmail.
+  // This is what actually fixes inbox-vs-spam placement, because these providers
+  // let you verify your own sending domain with SPF/DKIM/DMARC records.
+  if (process.env.EMAIL_HOST) {
+    console.log(`✅ USING SMTP RELAY (${process.env.EMAIL_HOST}) - Emails will be sent via your configured provider`);
+    return nodemailer.createTransport({
+      host: process.env.EMAIL_HOST,
+      port: parseInt(process.env.EMAIL_PORT || '587'),
+      secure: process.env.EMAIL_PORT === '465',
+      auth: {
+        user: emailUser,
+        pass: emailPass,
+      },
+      connectionTimeout: 10000,
+      socketTimeout: 10000,
+    });
+  }
+
+  console.log('✅ USING GMAIL TRANSPORTER (fallback) - Emails will be sent via Gmail');
+  console.log('⚠️  Gmail SMTP has no domain authentication of its own — expect some OTP mails to land in spam.');
+  console.log('⚠️  Set EMAIL_HOST/EMAIL_PORT to a provider like Brevo/Resend/SES for reliable inbox delivery.');
+
   return nodemailer.createTransport({
     service: 'gmail',
     auth: {
@@ -150,9 +171,10 @@ export async function sendPasswordResetOTP(email: string, otp: string, userName:
     console.log(`🔢 OTP: ${otp}`);
 
     const mailOptions = {
-      from: process.env.EMAIL_USER || 'noreply@tiffo.com',
+      from: `"Tiffo" <${process.env.EMAIL_USER || 'noreply@tiffo.com'}>`,
       to: email,
-      subject: 'Tiffo - Password Reset OTP',
+      subject: 'Your Tiffo verification code',
+      text: `Hello ${userName},\n\nYour Tiffo password reset code is: ${otp}\n\nThis code is valid for 15 minutes. If you did not request this, you can ignore this email.\n\n- Tiffo`,
       html: `
         <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; border: 2px solid #dc2626; border-radius: 10px; overflow: hidden;">
           <div style="background: #dc2626; padding: 30px; text-align: center; color: white;">
@@ -170,6 +192,7 @@ export async function sendPasswordResetOTP(email: string, otp: string, userName:
               <div style="font-size: 32px; font-weight: bold; color: #dc2626;">${otp}</div>
               <p style="color: #666; font-size: 14px;">Valid for 15 minutes</p>
             </div>
+            <p style="color: #9ca3af; font-size: 12px; text-align: center;">If you did not request this, you can safely ignore this email.</p>
           </div>
         </div>
       `,
@@ -181,6 +204,48 @@ export async function sendPasswordResetOTP(email: string, otp: string, userName:
   } catch (error: any) {
     console.error('❌ Email error:', error.message);
     console.log(`📋 OTP for manual use: ${otp}`);
+  }
+}
+
+// ✅ NEW: Email verification OTP sent at signup (FREE — same Gmail SMTP
+// transporter used for password reset, no paid service involved).
+export async function sendSignupOTP(email: string, otp: string, userName: string): Promise<void> {
+  try {
+    console.log(`\n📧 SENDING SIGNUP VERIFICATION OTP TO: ${email}`);
+    console.log(`🔢 OTP: ${otp}`);
+
+    const mailOptions = {
+      from: process.env.EMAIL_USER || 'noreply@tiffo.com',
+      to: email,
+      subject: 'Tiffo - Verify Your Email',
+      html: `
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; border: 2px solid #dc2626; border-radius: 10px; overflow: hidden;">
+          <div style="background: #dc2626; padding: 30px; text-align: center; color: white;">
+            <h1 style="margin: 0; font-size: 28px;">Tiffo</h1>
+            <p style="margin: 5px 0 0 0; opacity: 0.9;">Fresh Food Delivery</p>
+          </div>
+
+          <div style="padding: 30px; background: white;">
+            <h2 style="color: #dc2626; margin-bottom: 20px; text-align: center;">Verify Your Email</h2>
+
+            <p>Hello <strong>${userName}</strong>,</p>
+            <p>Use this OTP to verify your email and finish creating your account:</p>
+
+            <div style="text-align: center; margin: 25px 0; padding: 20px; background: #fef2f2; border-radius: 8px;">
+              <div style="font-size: 32px; font-weight: bold; color: #dc2626;">${otp}</div>
+              <p style="color: #666; font-size: 14px;">Valid for 10 minutes</p>
+            </div>
+          </div>
+        </div>
+      `,
+    };
+
+    await transporter.sendMail(mailOptions);
+    console.log(`✅ Signup OTP email sent successfully`);
+
+  } catch (error: any) {
+    console.error('❌ Email error:', error.message);
+    console.log(`📋 Signup OTP for manual use: ${otp}`);
   }
 }
 

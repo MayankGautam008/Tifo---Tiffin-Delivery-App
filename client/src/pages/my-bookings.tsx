@@ -1,10 +1,12 @@
 import { useState, useEffect } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/lib/auth-context";
 import { useLocation } from "wouter";
+import { apiRequest } from "@/lib/queryClient";
+import { useToast } from "@/hooks/use-toast";
 import type { BookingWithDetails, Review } from "@shared/schema";
 import { 
   Calendar, 
@@ -18,9 +20,65 @@ import {
   XCircle,
   Clock4,
   Truck,
-  Star
+  Star,
+  Ban
 } from "lucide-react";
 import { RatingDialog } from "@/components/rating-dialog";
+
+// ✅ NEW: 30 seconds — how long the "Cancel" button stays available after a
+// single/trial order is placed. Weekly/monthly subscriptions are cancelled
+// anytime from the Subscription section instead (see subscription-details.tsx).
+const CANCEL_WINDOW_SECONDS = 30;
+
+function CancelOrderButton({ booking }: { booking: BookingWithDetails }) {
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
+  const [secondsLeft, setSecondsLeft] = useState(() => {
+    const elapsed = (Date.now() - new Date(booking.createdAt).getTime()) / 1000;
+    return Math.max(0, Math.ceil(CANCEL_WINDOW_SECONDS - elapsed));
+  });
+
+  useEffect(() => {
+    if (secondsLeft <= 0) return;
+    const timer = setInterval(() => {
+      setSecondsLeft((prev) => Math.max(0, prev - 1));
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [secondsLeft > 0]);
+
+  const cancelMutation = useMutation({
+    mutationFn: async () => apiRequest("POST", `/api/bookings/${booking._id}/cancel`, { reason: "Cancelled by user" }),
+    onSuccess: () => {
+      toast({ title: "Order cancelled", description: "Your order has been cancelled." });
+      queryClient.invalidateQueries({ queryKey: ["/api/bookings/customer"] });
+    },
+    onError: (error: Error) => {
+      toast({ title: "Couldn't cancel order", description: error.message, variant: "destructive" });
+      queryClient.invalidateQueries({ queryKey: ["/api/bookings/customer"] });
+    },
+  });
+
+  // Only single/trial orders show this quick-cancel window; weekly/monthly
+  // are managed anytime from "Manage Subscription".
+  if (booking.bookingType === "weekly" || booking.bookingType === "monthly") return null;
+  if (booking.status !== "Pending" && booking.status !== "Confirmed") return null;
+  if (secondsLeft <= 0) return null;
+
+  return (
+    <div className="mt-3 pt-3 border-t border-gray-200">
+      <Button
+        onClick={() => cancelMutation.mutate()}
+        disabled={cancelMutation.isPending}
+        variant="outline"
+        size="sm"
+        className="w-full bg-red-50 border-red-200 text-red-700 hover:bg-red-100 hover:text-red-800"
+      >
+        <Ban className="w-4 h-4 mr-2" />
+        {cancelMutation.isPending ? "Cancelling..." : `Cancel Order (${secondsLeft}s)`}
+      </Button>
+    </div>
+  );
+}
 
 export default function MyBookings() {
   const { isAuthenticated, user } = useAuth();
@@ -366,6 +424,14 @@ const totalAmount = booking.totalPrice;
                       )}
                     </div>
 
+                    {/* Cancellation reason - shown once the order is cancelled */}
+                    {booking.status === "Cancelled" && booking.cancellationReason && (
+                      <div className="flex items-start gap-2 p-2 sm:p-3 bg-red-50 rounded-lg mb-3 sm:mb-4 border border-red-100">
+                        <XCircle className="w-3 h-3 sm:w-4 sm:h-4 text-red-600 mt-0.5 flex-shrink-0" />
+                        <p className="text-red-700 text-xs sm:text-sm">{booking.cancellationReason}</p>
+                      </div>
+                    )}
+
                     {/* Manage Subscription - weekly/monthly bookings only */}
                     {(booking.bookingType === "weekly" || booking.bookingType === "monthly") && (
                       <div className="mt-3 pt-3 border-t border-gray-200">
@@ -380,6 +446,9 @@ const totalAmount = booking.totalPrice;
                         </Button>
                       </div>
                     )}
+
+                    {/* Cancel Order - single/trial orders, within 30 seconds of placing */}
+                    <CancelOrderButton booking={booking} />
 
                     {/* Rating Section */}
                     {renderAlreadyRated(booking)}
