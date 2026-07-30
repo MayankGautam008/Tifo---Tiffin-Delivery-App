@@ -36,7 +36,7 @@ app.use(helmet({
 // 2. CORS - Configure properly
 app.use(cors({
   origin: process.env.NODE_ENV === 'production' 
-    ? ['https://yourdomain.com'] 
+    ? [process.env.CLIENT_URL || 'https://tifoindia.onrender.com'] 
     : ['http://localhost:3000', 'http://localhost:5000'],
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH'],
@@ -376,12 +376,15 @@ async function sendTestOrderNotification(chatId: number, orderDetails: any) {
 
     // Start server
     const port = parseInt(process.env.PORT || "5000", 10);
-    const host = "localhost";
+    // ✅ Render (and most cloud hosts) require binding to 0.0.0.0 — binding
+    // to "localhost" only accepts connections from inside the container,
+    // so Render's port detection/health check never sees the server as up.
+    const host = process.env.NODE_ENV === "production" ? "0.0.0.0" : "localhost";
 
     server.listen(port, host, () => {
       const msg = `🚀 Server running at http://${host}:${port}`;
       log ? log(msg) : console.log(msg);
-      console.log("🌐 Website should be available at: http://localhost:5000");
+      console.log(`🌐 Website should be available at: http://${host}:${port}`);
       console.log("🤖 Telegram Bot: @TiffoSellerBot");
       console.log("💡 Test the bot by searching '@TiffoSellerBot' on Telegram");
     });
