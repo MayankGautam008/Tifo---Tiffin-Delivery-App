@@ -119,11 +119,27 @@ const turnstileSchema = z.object({
   cdata: z.string().optional(),
 });
 
-export async function verifyTurnstile(token: string): Promise<boolean> {
+export async function verifyTurnstile(token: string | undefined | null): Promise<boolean> {
+  // ✅ Guard: if the frontend never sent a token (widget didn't load / wasn't
+  // solved / VITE_TURNSTILE_SITE_KEY missing from the production build),
+  // don't even call Cloudflare — it will just return "invalid-input-response"
+  // for an empty/"null" response, which is confusing to debug.
+  if (!token || typeof token !== "string" || token.trim() === "") {
+    console.warn("Turnstile verification skipped: no token received from client.");
+    return false;
+  }
+
   try {
     console.log("Verifying Turnstile token...");
-    
-    // YEH CORRECT FORMAT USE KARO:
+
+    // ✅ Use URLSearchParams so both the secret and the token are properly
+    // form-url-encoded. Building the body with a raw template string can
+    // corrupt values containing "+", "=", or "&" and cause Cloudflare to
+    // report invalid-input-response even for a real token.
+    const params = new URLSearchParams();
+    params.append("secret", process.env.TURNSTILE_SECRET_KEY || "");
+    params.append("response", token);
+
     const response = await fetch(
       "https://challenges.cloudflare.com/turnstile/v0/siteverify",
       {
@@ -131,14 +147,14 @@ export async function verifyTurnstile(token: string): Promise<boolean> {
         headers: {
           "Content-Type": "application/x-www-form-urlencoded",
         },
-        body: `secret=${process.env.TURNSTILE_SECRET_KEY}&response=${token}`,
+        body: params.toString(),
       }
     );
 
     const data = await response.json();
     console.log("Turnstile response:", data);
-    
-    return data.success;
+
+    return data.success === true;
   } catch (error) {
     console.error("Turnstile verification failed:", error);
     return false;
@@ -558,6 +574,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
         // once TURNSTILE_SECRET_KEY is set in the server .env; see the
         // matching client widget in register.tsx.
         if (process.env.TURNSTILE_SECRET_KEY) {
+          if (!req.body.turnstileToken) {
+            return res.status(400).json({
+              message: "Please complete the verification checkbox before creating an account.",
+            });
+          }
           const captchaOk = await verifyTurnstile(req.body.turnstileToken);
           if (!captchaOk) {
             return res.status(400).json({ message: "Captcha verification failed. Please try again." });
@@ -745,6 +766,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       // ✅ CAPTCHA (Cloudflare Turnstile — free, unlimited).
       if (process.env.TURNSTILE_SECRET_KEY) {
+        if (!req.body.turnstileToken) {
+          return res.status(400).json({
+            message: "Please complete the verification checkbox before signing in.",
+          });
+        }
         const captchaOk = await verifyTurnstile(req.body.turnstileToken);
         if (!captchaOk) {
           return res.status(400).json({ message: "Captcha verification failed. Please try again." });
@@ -2452,20 +2478,3 @@ app.get("/api/tiffins", async (req, res) => {
 
   return httpServer;
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
