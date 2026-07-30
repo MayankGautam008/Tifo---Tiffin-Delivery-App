@@ -18,8 +18,71 @@ const checkEmailConfig = () => {
   return { emailUser, emailPass };
 };
 
+// ✅ Brevo HTTP API transporter — uses HTTPS (port 443), which Render's free
+// tier does NOT block (unlike SMTP ports 25/465/587, which Render blocks on
+// free web services as of Sep 2025). Prefer this over raw SMTP when running
+// on a free Render instance. Get the key from Brevo dashboard → SMTP & API →
+// API Keys tab (NOT the SMTP key — this is a separate key).
+function parseAddress(input: string): { email: string; name?: string } {
+  const match = input.match(/^"?([^"<]*)"?\s*<(.+)>$/);
+  if (match) {
+    const name = match[1].trim();
+    return { email: match[2].trim(), name: name || undefined };
+  }
+  return { email: input.trim() };
+}
+
+const createBrevoApiTransporter = () => {
+  console.log('✅ USING BREVO HTTP API - Emails will be sent via api.brevo.com (works on Render free tier)');
+  return {
+    sendMail: async (mailOptions: any) => {
+      const sender = parseAddress(mailOptions.from || process.env.EMAIL_FROM || 'noreply@tiffo.com');
+      const toList = (Array.isArray(mailOptions.to) ? mailOptions.to : [mailOptions.to])
+        .filter(Boolean)
+        .map((addr: string) => parseAddress(addr));
+
+      const response = await fetch('https://api.brevo.com/v3/smtp/email', {
+        method: 'POST',
+        headers: {
+          'api-key': process.env.BREVO_API_KEY as string,
+          'Content-Type': 'application/json',
+          'accept': 'application/json',
+        },
+        body: JSON.stringify({
+          sender: { email: sender.email, name: sender.name || 'Tiffo' },
+          to: toList,
+          subject: mailOptions.subject,
+          htmlContent: mailOptions.html,
+          textContent: mailOptions.text,
+        }),
+      });
+
+      if (!response.ok) {
+        const errorBody = await response.text();
+        throw new Error(`Brevo API error (${response.status}): ${errorBody}`);
+      }
+
+      const data = await response.json();
+      return { messageId: data.messageId, response: 'Sent via Brevo API' };
+    },
+    verify: (callback: any) => {
+      if (!process.env.BREVO_API_KEY) {
+        callback(new Error('BREVO_API_KEY not set'), false);
+      } else {
+        callback(null, true);
+      }
+    },
+  };
+};
+
 // Email transporter setup
 const createTransporter = () => {
+  // ✅ Prefer the Brevo HTTP API whenever BREVO_API_KEY is set — this works
+  // on Render's free tier, unlike SMTP which gets blocked outbound.
+  if (process.env.BREVO_API_KEY) {
+    return createBrevoApiTransporter();
+  }
+
   const { emailUser, emailPass } = checkEmailConfig();
 
   if (!emailUser || !emailPass) {
