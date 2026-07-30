@@ -27,23 +27,23 @@ if (process.env.NODE_ENV === 'production') {
 
 // ✅ SECURITY MIDDLEWARE - ORDER MATTERS!
 
-// 1. Helmet - Security headers (development me thoda relaxed)
 app.use(helmet({
   contentSecurityPolicy: process.env.NODE_ENV === 'production' ? {
     directives: {
       defaultSrc: ["'self'"],
       styleSrc: ["'self'", "'unsafe-inline'", "https:"],
-      // ✅ Cloudflare Turnstile's script must be allowed here, otherwise the
-      // captcha widget silently fails to render in production (CSP blocks
-      // it, but Vite dev mode has CSP off entirely so it "worked locally").
       scriptSrc: ["'self'", "https://challenges.cloudflare.com"],
       imgSrc: ["'self'", "data:", "https:"],
       fontSrc: ["'self'", "https:"],
       connectSrc: ["'self'", "https://challenges.cloudflare.com"],
       frameSrc: ["'self'", "https://challenges.cloudflare.com"],
     },
-  } : false, // Development me CSP disable for Vite
-  crossOriginEmbedderPolicy: false
+  } : false,
+  crossOriginEmbedderPolicy: false,
+  // ✅ Helmet's default COOP (same-origin) blocks the cross-origin
+  // postMessage/iframe handshake Turnstile's challenge needs, causing the
+  // widget's own "Unable to connect to website" error.
+  crossOriginOpenerPolicy: false
 }));
 
 // 2. CORS - Configure properly
