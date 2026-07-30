@@ -16,6 +16,15 @@ dotenv.config();
 
 const app = express();
 
+// ✅ Render (and most cloud hosts) sit behind a reverse proxy, which sets
+// X-Forwarded-For with the real client IP. Without trusting the proxy,
+// express-rate-limit can't tell real users apart by IP (and throws the
+// ERR_ERL_UNEXPECTED_X_FORWARDED_FOR warning). `1` = trust exactly one hop,
+// which matches Render's single reverse-proxy setup.
+if (process.env.NODE_ENV === 'production') {
+  app.set('trust proxy', 1);
+}
+
 // ✅ SECURITY MIDDLEWARE - ORDER MATTERS!
 
 // 1. Helmet - Security headers (development me thoda relaxed)
@@ -24,10 +33,14 @@ app.use(helmet({
     directives: {
       defaultSrc: ["'self'"],
       styleSrc: ["'self'", "'unsafe-inline'", "https:"],
-      scriptSrc: ["'self'"],
+      // ✅ Cloudflare Turnstile's script must be allowed here, otherwise the
+      // captcha widget silently fails to render in production (CSP blocks
+      // it, but Vite dev mode has CSP off entirely so it "worked locally").
+      scriptSrc: ["'self'", "https://challenges.cloudflare.com"],
       imgSrc: ["'self'", "data:", "https:"],
       fontSrc: ["'self'", "https:"],
-      connectSrc: ["'self'"],
+      connectSrc: ["'self'", "https://challenges.cloudflare.com"],
+      frameSrc: ["'self'", "https://challenges.cloudflare.com"],
     },
   } : false, // Development me CSP disable for Vite
   crossOriginEmbedderPolicy: false
