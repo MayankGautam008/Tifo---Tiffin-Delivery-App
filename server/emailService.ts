@@ -177,7 +177,7 @@ export const sendEmailSafely = async (emailFunction: () => Promise<any>, emailTy
 // ✅ TEST EMAIL FUNCTION
 export async function testEmailSending(toEmail?: string) {
   try {
-    const testEmail = toEmail || process.env.EMAIL_USER;
+    const testEmail = toEmail || process.env.EMAIL_FROM;
     if (!testEmail) {
       console.log('❌ No email specified for test');
       return null;
@@ -234,7 +234,7 @@ export async function sendPasswordResetOTP(email: string, otp: string, userName:
     console.log(`🔢 OTP: ${otp}`);
 
     const mailOptions = {
-      from: `"Tiffo" <${process.env.EMAIL_USER || 'noreply@tiffo.com'}>`,
+      from: `"Tiffo" <${process.env.EMAIL_FROM || 'noreply@tiffo.com'}>`,
       to: email,
       subject: 'Your Tiffo verification code',
       text: `Hello ${userName},\n\nYour Tiffo password reset code is: ${otp}\n\nThis code is valid for 15 minutes. If you did not request this, you can ignore this email.\n\n- Tiffo`,
@@ -278,7 +278,7 @@ export async function sendSignupOTP(email: string, otp: string, userName: string
     console.log(`🔢 OTP: ${otp}`);
 
     const mailOptions = {
-      from: process.env.EMAIL_USER || 'noreply@tiffo.com',
+      from: process.env.EMAIL_FROM || 'noreply@tiffo.com',
       to: email,
       subject: 'Tiffo - Verify Your Email',
       html: `
@@ -345,7 +345,7 @@ export async function sendBookingConfirmationToCustomer(
     const basePrice = subtotal - addOnsTotal - customizationsTotal;
 
     const mailOptions = {
-      from: `"Tiffo" <${process.env.EMAIL_USER || 'noreply@tiffinservice.com'}>`,
+      from: `"Tiffo" <${process.env.EMAIL_FROM || 'noreply@tiffinservice.com'}>`,
       to: customerEmail,
       subject: `Order Confirmation - ${tiffinTitle}`,
       html: `
@@ -504,7 +504,7 @@ export async function sendOrderNotificationToSeller(
     const basePrice = subtotal - addOnsTotal - customizationsTotal;
 
     const mailOptions = {
-      from: `"Tiffo" <${process.env.EMAIL_USER || 'noreply@tiffinservice.com'}>`,
+      from: `"Tiffo" <${process.env.EMAIL_FROM || 'noreply@tiffinservice.com'}>`,
       to: sellerEmail,
       subject: `New Order #${orderId} - ${tiffinTitle} - Rs. ${totalPrice}`,
       html: `
@@ -647,7 +647,7 @@ export async function sendOrderCancellationToSeller(
     console.log(`📧 SENDING CANCELLATION NOTIFICATION TO SELLER: ${sellerEmail}`);
 
     const mailOptions = {
-      from: process.env.EMAIL_USER || 'noreply@tiffo.com',
+      from: process.env.EMAIL_FROM || 'noreply@tiffo.com',
       to: sellerEmail,
       subject: `❌ Order Cancelled - ${tiffinTitle}`,
       html: `
@@ -734,7 +734,7 @@ export async function sendSellerStatusUpdate(
     };
 
     const mailOptions = {
-      from: process.env.EMAIL_USER || 'noreply@tiffinservice.com',
+      from: process.env.EMAIL_FROM || 'noreply@tiffinservice.com',
       to: sellerEmail,
       subject: statusInfo.subject,
       html: `
@@ -795,7 +795,7 @@ export async function sendOrderStatusUpdateToCustomer(
 ): Promise<void> {
   try {
     const mailOptions = {
-      from: `"Tiffo" <${process.env.EMAIL_USER || 'noreply@tiffinservice.com'}>`,
+      from: `"Tiffo" <${process.env.EMAIL_FROM || 'noreply@tiffinservice.com'}>`,
       to: customerEmail,
       subject: `Order Update - #${orderId} is now ${status}`,
       html: `
