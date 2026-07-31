@@ -15,11 +15,66 @@ import { apiRequest } from "@/lib/queryClient";
 import { markSellerLandedOnDashboard } from "@/lib/seller-landing";
 import { TurnstileWidget } from "@/components/turnstile-widget";
 import { insertUserSchema, type InsertUser, type AuthResponse } from "@shared/schema";
-import { UtensilsCrossed, Eye, EyeOff, ArrowLeft, Home, Star, Truck, Clock, ShieldCheck, Mail } from "lucide-react";
+import {
+  Eye,
+  EyeOff,
+  ArrowLeft,
+  Mail,
+  CalendarDays,
+  ChefHat,
+  Settings2,
+  Truck,
+  Star,
+  Clock,
+  ShieldCheck,
+} from "lucide-react";
 
 type RegisterResponse = AuthResponse | { requiresOtp: true; email: string; message: string };
 
 type RegisterFormData = InsertUser;
+
+/**
+ * TifoMark — the brand glyph: a tiffin bowl cradling a spoon, with a
+ * leaf growing out of it. Reused everywhere instead of a generic
+ * fork/knife icon so the auth screens carry the same identity as the logo.
+ */
+function TifoMark({ className = "w-8 h-8" }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 48 48" fill="none" className={className} aria-hidden="true">
+      <path
+        d="M10 22c0 8.837 6.268 16 14 16s14-7.163 14-16H10Z"
+        fill="white"
+        fillOpacity="0.95"
+      />
+      <path
+        d="M8 22h32M12 22c0 8.837 5.373 16 12 16s12-7.163 12-16"
+        stroke="currentColor"
+        strokeWidth="2.6"
+        strokeLinecap="round"
+      />
+      <path
+        d="M24 22V9m0 0c-1.5-2.6-4-3.6-6.4-2.9"
+        stroke="#6E9C3F"
+        strokeWidth="2.4"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M24 12c1.6-2.2 3.8-3 6-2.4"
+        stroke="#6E9C3F"
+        strokeWidth="2.4"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M30 19c2.4-1.2 4.6-3 6.2-5.4"
+        stroke="currentColor"
+        strokeWidth="2.2"
+        strokeLinecap="round"
+      />
+    </svg>
+  );
+}
 
 export default function Register() {
   const { toast } = useToast();
@@ -74,7 +129,7 @@ export default function Register() {
       login(data);
       toast({
         title: "Account created!",
-        description: "Welcome to Tiffo.",
+        description: "Welcome to Tifo — your tiffin, your rules.",
       });
 
       if (data.user.role === "seller") {
@@ -116,7 +171,7 @@ export default function Register() {
       login(data);
       toast({
         title: "Email verified! 🎉",
-        description: "Welcome to Tiffo.",
+        description: "Welcome to Tifo — your tiffin, your rules.",
       });
 
       if (data.user.role === "seller") {
@@ -160,24 +215,20 @@ export default function Register() {
     verifyOtpMutation.mutate();
   };
 
-  const goBack = () => {
-    window.history.back();
-  };
-
   const goHome = () => {
     setLocation("/");
   };
 
   return (
-    <div className="min-h-screen bg-white">
-      {/* Custom Header with Back and Home buttons */}
+    <div className="min-h-screen bg-[#FBF3E7]">
+      {/* Custom Header with Home button */}
       <div className="relative z-50">
         <div className="absolute top-6 left-6 flex gap-3">
           <Button
             onClick={goHome}
             variant="outline"
             size="sm"
-            className="bg-white border-red-200 hover:bg-red-50 text-red-600 shadow-sm rounded-xl"
+            className="bg-[#FBF3E7] border-[#E7D2AE] hover:bg-[#F3E3CC] text-[#C1552E] shadow-sm rounded-xl"
           >
             <ArrowLeft className="w-4 h-4 mr-2" />
             Home
@@ -187,8 +238,8 @@ export default function Register() {
 
       {/* Background decorative elements */}
       <div className="absolute inset-0 overflow-hidden pointer-events-none">
-        <div className="absolute -top-40 -right-40 w-80 h-80 bg-red-100 rounded-full mix-blend-multiply filter blur-xl opacity-30"></div>
-        <div className="absolute -bottom-40 -left-40 w-80 h-80 bg-red-50 rounded-full mix-blend-multiply filter blur-xl opacity-30"></div>
+        <div className="absolute -top-40 -right-40 w-80 h-80 bg-[#F3E3CC] rounded-full mix-blend-multiply filter blur-xl opacity-60"></div>
+        <div className="absolute -bottom-40 -left-40 w-80 h-80 bg-[#E7D2AE] rounded-full mix-blend-multiply filter blur-xl opacity-50"></div>
       </div>
 
       <div className="relative flex items-center justify-center min-h-screen px-4 py-8">
@@ -197,63 +248,64 @@ export default function Register() {
           <div className="hidden lg:block space-y-8">
             <div className="space-y-6">
               <div className="flex items-center gap-4">
-                <div className="w-16 h-16 bg-red-600 rounded-2xl flex items-center justify-center shadow-lg">
-                  <UtensilsCrossed className="w-8 h-8 text-white" />
+                <div className="w-16 h-16 bg-[#C1552E] rounded-2xl flex items-center justify-center shadow-lg text-white">
+                  <TifoMark className="w-9 h-9" />
                 </div>
                 <div>
-                  <h1 className="text-4xl font-bold text-red-600">Tiffo</h1>
-                  <p className="text-gray-600 mt-1">Fresh Food Delivery</p>
+                  <h1 className="text-4xl font-serif font-bold text-[#C1552E] tracking-tight">tifo</h1>
+                  <p className="text-[#7A6A58] mt-1 text-sm tracking-wide">the right food, right person, right time</p>
                 </div>
               </div>
-              
-              <h2 className="text-5xl font-bold text-gray-900 leading-tight">
-                Start your <span className="text-red-600">food</span> journey with us
+
+              <h2 className="text-5xl font-serif font-bold text-[#2B2118] leading-tight">
+                Your tiffin, <span className="text-[#C1552E]">customized</span> your way
               </h2>
-              
-              <p className="text-xl text-gray-600 leading-relaxed">
-                Join thousands of food lovers and restaurant owners who trust us for delicious meals and business growth.
+
+              <p className="text-xl text-[#7A6A58] leading-relaxed">
+                Build your own thali, set your weekly tiffin rotation, and get customizable
+                meals from real kitchens — join as a customer or list your kitchen as a seller.
               </p>
             </div>
 
             {/* Features grid */}
             <div className="grid grid-cols-2 gap-4 mt-8">
-              <div className="flex items-start gap-3 p-4 bg-red-50 rounded-2xl border border-red-100">
-                <div className="w-10 h-10 bg-red-100 rounded-xl flex items-center justify-center">
-                  <Truck className="w-5 h-5 text-red-600" />
+              <div className="flex items-start gap-3 p-4 bg-[#F3E3CC] rounded-2xl border border-[#E7D2AE]">
+                <div className="w-10 h-10 bg-white rounded-xl flex items-center justify-center">
+                  <Settings2 className="w-5 h-5 text-[#C1552E]" />
                 </div>
                 <div>
-                  <h3 className="font-semibold text-gray-900">Fast Delivery</h3>
-                  <p className="text-sm text-gray-600 mt-1">30-min delivery guarantee</p>
+                  <h3 className="font-semibold text-[#2B2118]">Customize Your Thali</h3>
+                  <p className="text-sm text-[#7A6A58] mt-1">Swap sabzis, adjust spice, skip what you don't eat</p>
                 </div>
               </div>
-              
-              <div className="flex items-start gap-3 p-4 bg-red-50 rounded-2xl border border-red-100">
-                <div className="w-10 h-10 bg-red-100 rounded-xl flex items-center justify-center">
-                  <Star className="w-5 h-5 text-red-600" />
+
+              <div className="flex items-start gap-3 p-4 bg-[#F3E3CC] rounded-2xl border border-[#E7D2AE]">
+                <div className="w-10 h-10 bg-white rounded-xl flex items-center justify-center">
+                  <CalendarDays className="w-5 h-5 text-[#C1552E]" />
                 </div>
                 <div>
-                  <h3 className="font-semibold text-gray-900">Premium Quality</h3>
-                  <p className="text-sm text-gray-600 mt-1">Fresh ingredients daily</p>
+                  <h3 className="font-semibold text-[#2B2118]">Flexible Tiffin Plans</h3>
+                  <p className="text-sm text-[#7A6A58] mt-1">Pause, skip a day, or switch weekly — anytime</p>
                 </div>
               </div>
-              
-              <div className="flex items-start gap-3 p-4 bg-red-50 rounded-2xl border border-red-100">
-                <div className="w-10 h-10 bg-red-100 rounded-xl flex items-center justify-center">
-                  <ShieldCheck className="w-5 h-5 text-red-600" />
+
+              <div className="flex items-start gap-3 p-4 bg-[#F3E3CC] rounded-2xl border border-[#E7D2AE]">
+                <div className="w-10 h-10 bg-white rounded-xl flex items-center justify-center">
+                  <ChefHat className="w-5 h-5 text-[#C1552E]" />
                 </div>
                 <div>
-                  <h3 className="font-semibold text-gray-900">Safe & Hygienic</h3>
-                  <p className="text-sm text-gray-600 mt-1">Quality assured packaging</p>
+                  <h3 className="font-semibold text-[#2B2118]">Real Home Kitchens</h3>
+                  <p className="text-sm text-[#7A6A58] mt-1">Ghar-jaisa khana, made fresh every day</p>
                 </div>
               </div>
-              
-              <div className="flex items-start gap-3 p-4 bg-red-50 rounded-2xl border border-red-100">
-                <div className="w-10 h-10 bg-red-100 rounded-xl flex items-center justify-center">
-                  <Clock className="w-5 h-5 text-red-600" />
+
+              <div className="flex items-start gap-3 p-4 bg-[#F3E3CC] rounded-2xl border border-[#E7D2AE]">
+                <div className="w-10 h-10 bg-white rounded-xl flex items-center justify-center">
+                  <ShieldCheck className="w-5 h-5 text-[#C1552E]" />
                 </div>
                 <div>
-                  <h3 className="font-semibold text-gray-900">24/7 Support</h3>
-                  <p className="text-sm text-gray-600 mt-1">Always here to help</p>
+                  <h3 className="font-semibold text-[#2B2118]">Hygiene Verified</h3>
+                  <p className="text-sm text-[#7A6A58] mt-1">Every kitchen checked before it's listed</p>
                 </div>
               </div>
             </div>
@@ -261,34 +313,37 @@ export default function Register() {
 
           {/* Right side - Register card */}
           <div className="flex justify-center">
-            <Card className="w-full max-w-md border-2 border-red-100 shadow-2xl bg-white rounded-3xl overflow-hidden">
-              <div className="absolute top-0 left-0 right-0 h-2 bg-red-600"></div>
-              
+            <Card className="relative w-full max-w-md border-2 border-[#E7D2AE] shadow-2xl bg-white rounded-3xl overflow-hidden">
+              <div className="absolute top-0 left-0 right-0 h-2 bg-[#C1552E]"></div>
+              <div className="absolute top-5 -right-11 rotate-45 bg-[#6E9C3F] text-white text-[10px] font-semibold tracking-wide px-12 py-1 shadow-md">
+                CUSTOM TIFFIN, DAILY
+              </div>
+
               <CardHeader className="text-center pb-4 pt-6">
                 <div className="flex justify-center mb-3">
-                  <div className="w-16 h-16 bg-red-600 rounded-2xl flex items-center justify-center shadow-lg">
-                    <UtensilsCrossed className="w-8 h-8 text-white" />
+                  <div className="w-16 h-16 bg-[#C1552E] rounded-2xl flex items-center justify-center shadow-lg text-white">
+                    <TifoMark className="w-9 h-9" />
                   </div>
                 </div>
-                <CardTitle className="font-bold text-2xl text-gray-900">
-                  Create Account
+                <CardTitle className="font-serif font-bold text-2xl text-[#2B2118]">
+                  Start Your Tiffin
                 </CardTitle>
-                <CardDescription className="text-gray-600">
-                  Join Tiffo and start your journey
+                <CardDescription className="text-[#7A6A58]">
+                  Set up your account and build your first custom meal plan
                 </CardDescription>
               </CardHeader>
-              
+
               <CardContent className="pb-6">
               {otpStep ? (
                 <div className="space-y-5 text-center">
                   <div className="flex justify-center">
-                    <div className="w-14 h-14 bg-red-100 rounded-2xl flex items-center justify-center">
-                      <Mail className="w-7 h-7 text-red-600" />
+                    <div className="w-14 h-14 bg-[#F3E3CC] rounded-2xl flex items-center justify-center">
+                      <Mail className="w-7 h-7 text-[#C1552E]" />
                     </div>
                   </div>
-                  <p className="text-gray-600 text-sm">
+                  <p className="text-[#7A6A58] text-sm">
                     Enter the 6-digit OTP sent to<br />
-                    <span className="font-semibold text-gray-900">{pendingEmail}</span>
+                    <span className="font-semibold text-[#2B2118]">{pendingEmail}</span>
                   </p>
                   <Input
                     inputMode="numeric"
@@ -296,13 +351,13 @@ export default function Register() {
                     placeholder="000000"
                     value={otpValue}
                     onChange={(e) => setOtpValue(e.target.value.replace(/\D/g, "").slice(0, 6))}
-                    className="h-12 text-center text-2xl tracking-[0.5em] rounded-xl border-red-200 focus:ring-2 focus:ring-red-500 focus:border-red-500"
+                    className="h-12 text-center text-2xl tracking-[0.5em] rounded-xl border-[#E7D2AE] focus:ring-2 focus:ring-[#C1552E] focus:border-[#C1552E]"
                   />
-                  {otpError && <p className="text-sm text-red-600">{otpError}</p>}
+                  {otpError && <p className="text-sm text-[#C1552E]">{otpError}</p>}
                   <Button
                     onClick={onVerifyOtp}
                     disabled={verifyOtpMutation.isPending}
-                    className="w-full h-11 bg-red-600 hover:bg-red-700 text-white font-semibold rounded-xl"
+                    className="w-full h-11 bg-[#C1552E] hover:bg-[#9C4322] text-white font-semibold rounded-xl"
                   >
                     {verifyOtpMutation.isPending ? "Verifying..." : "Verify & Create Account"}
                   </Button>
@@ -310,7 +365,7 @@ export default function Register() {
                     type="button"
                     onClick={() => resendOtpMutation.mutate()}
                     disabled={resendOtpMutation.isPending}
-                    className="text-sm text-red-600 hover:underline font-medium"
+                    className="text-sm text-[#C1552E] hover:underline font-medium"
                   >
                     {resendOtpMutation.isPending ? "Resending..." : "Resend OTP"}
                   </button>
@@ -321,7 +376,7 @@ export default function Register() {
                         setOtpStep(false);
                         setTurnstileToken(null);
                       }}
-                      className="text-xs text-gray-500 hover:underline"
+                      className="text-xs text-[#7A6A58] hover:underline"
                     >
                       ← Edit details
                     </button>
@@ -339,12 +394,12 @@ export default function Register() {
                           name="name"
                           render={({ field }) => (
                             <FormItem>
-                              <FormLabel className="text-sm font-medium text-gray-700">Full Name</FormLabel>
+                              <FormLabel className="text-sm font-medium text-[#2B2118]">Full Name</FormLabel>
                               <FormControl>
                                 <Input
                                   placeholder="User"
                                   {...field}
-                                  className="h-10 rounded-xl border-red-200 focus:ring-2 focus:ring-red-500 focus:border-red-500 bg-white"
+                                  className="h-10 rounded-xl border-[#E7D2AE] focus:ring-2 focus:ring-[#C1552E] focus:border-[#C1552E] bg-white"
                                 />
                               </FormControl>
                               <FormMessage className="text-xs" />
@@ -360,13 +415,13 @@ export default function Register() {
                           name="email"
                           render={({ field }) => (
                             <FormItem>
-                              <FormLabel className="text-sm font-medium text-gray-700">Email</FormLabel>
+                              <FormLabel className="text-sm font-medium text-[#2B2118]">Email</FormLabel>
                               <FormControl>
                                 <Input
                                   placeholder="user@gmail.com"
                                   type="email"
                                   {...field}
-                                  className="h-10 rounded-xl border-red-200 focus:ring-2 focus:ring-red-500 focus:border-red-500 bg-white"
+                                  className="h-10 rounded-xl border-[#E7D2AE] focus:ring-2 focus:ring-[#C1552E] focus:border-[#C1552E] bg-white"
                                 />
                               </FormControl>
                               <FormMessage className="text-xs" />
@@ -382,12 +437,12 @@ export default function Register() {
                           name="phone"
                           render={({ field }) => (
                             <FormItem>
-                              <FormLabel className="text-sm font-medium text-gray-700">Phone</FormLabel>
+                              <FormLabel className="text-sm font-medium text-[#2B2118]">Phone</FormLabel>
                               <FormControl>
                                 <Input
                                   placeholder="9876543210"
                                   {...field}
-                                  className="h-10 rounded-xl border-red-200 focus:ring-2 focus:ring-red-500 focus:border-red-500 bg-white"
+                                  className="h-10 rounded-xl border-[#E7D2AE] focus:ring-2 focus:ring-[#C1552E] focus:border-[#C1552E] bg-white"
                                 />
                               </FormControl>
                               <FormMessage className="text-xs" />
@@ -402,12 +457,12 @@ export default function Register() {
                           name="city"
                           render={({ field }) => (
                             <FormItem>
-                              <FormLabel className="text-sm font-medium text-gray-700">City</FormLabel>
+                              <FormLabel className="text-sm font-medium text-[#2B2118]">City</FormLabel>
                               <FormControl>
-                                <Input 
-                                  placeholder="City" 
+                                <Input
+                                  placeholder="City"
                                   {...field}
-                                  className="h-10 rounded-xl border-red-200 focus:ring-2 focus:ring-red-500 focus:border-red-500 bg-white"
+                                  className="h-10 rounded-xl border-[#E7D2AE] focus:ring-2 focus:ring-[#C1552E] focus:border-[#C1552E] bg-white"
                                 />
                               </FormControl>
                               <FormMessage className="text-xs" />
@@ -423,12 +478,12 @@ export default function Register() {
                           name="address"
                           render={({ field }) => (
                             <FormItem>
-                              <FormLabel className="text-sm font-medium text-gray-700">Address</FormLabel>
+                              <FormLabel className="text-sm font-medium text-[#2B2118]">Delivery Address</FormLabel>
                               <FormControl>
                                 <Textarea
-                                  placeholder="Enter your complete address"
+                                  placeholder="Where should your tiffin reach you?"
                                   {...field}
-                                  className="min-h-16 rounded-xl border-red-200 focus:ring-2 focus:ring-red-500 focus:border-red-500 bg-white resize-none text-sm"
+                                  className="min-h-16 rounded-xl border-[#E7D2AE] focus:ring-2 focus:ring-[#C1552E] focus:border-[#C1552E] bg-white resize-none text-sm"
                                 />
                               </FormControl>
                               <FormMessage className="text-xs" />
@@ -444,19 +499,19 @@ export default function Register() {
                           name="password"
                           render={({ field }) => (
                             <FormItem>
-                              <FormLabel className="text-sm font-medium text-gray-700">Password</FormLabel>
+                              <FormLabel className="text-sm font-medium text-[#2B2118]">Password</FormLabel>
                               <FormControl>
                                 <div className="relative">
                                   <Input
                                     placeholder="Password"
                                     type={showPassword ? "text" : "password"}
                                     {...field}
-                                    className="h-10 pr-10 rounded-xl border-red-200 focus:ring-2 focus:ring-red-500 focus:border-red-500 bg-white"
+                                    className="h-10 pr-10 rounded-xl border-[#E7D2AE] focus:ring-2 focus:ring-[#C1552E] focus:border-[#C1552E] bg-white"
                                   />
                                   <button
                                     type="button"
                                     onClick={() => setShowPassword(!showPassword)}
-                                    className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-500 hover:text-gray-700"
+                                    className="absolute right-3 top-1/2 transform -translate-y-1/2 text-[#7A6A58] hover:text-[#2B2118]"
                                   >
                                     {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                                   </button>
@@ -474,16 +529,16 @@ export default function Register() {
                           name="role"
                           render={({ field }) => (
                             <FormItem>
-                              <FormLabel className="text-sm font-medium text-gray-700">Role</FormLabel>
+                              <FormLabel className="text-sm font-medium text-[#2B2118]">I am a</FormLabel>
                               <Select onValueChange={field.onChange} defaultValue={field.value}>
                                 <FormControl>
-                                  <SelectTrigger className="h-10 rounded-xl border-red-200 focus:ring-2 focus:ring-red-500 focus:border-red-500 bg-white">
+                                  <SelectTrigger className="h-10 rounded-xl border-[#E7D2AE] focus:ring-2 focus:ring-[#C1552E] focus:border-[#C1552E] bg-white">
                                     <SelectValue placeholder="Role" />
                                   </SelectTrigger>
                                 </FormControl>
                                 <SelectContent>
                                   <SelectItem value="customer">Customer</SelectItem>
-                                  <SelectItem value="seller">Seller</SelectItem>
+                                  <SelectItem value="seller">Kitchen / Seller</SelectItem>
                                 </SelectContent>
                               </Select>
                               <FormMessage className="text-xs" />
@@ -498,13 +553,13 @@ export default function Register() {
                     {/* Submit Button */}
                     <Button
                       type="submit"
-                      className="w-full h-11 bg-red-600 hover:bg-red-700 text-white font-semibold rounded-xl shadow-lg transition-all duration-200 transform hover:scale-[1.02] disabled:opacity-50 mt-4"
+                      className="w-full h-11 bg-[#C1552E] hover:bg-[#9C4322] text-white font-semibold rounded-xl shadow-lg transition-all duration-200 transform hover:scale-[1.02] disabled:opacity-50 mt-4"
                       disabled={registerMutation.isPending || (captchaConfigured && !turnstileToken)}
                     >
                       {isLoading ? (
                         <div className="flex items-center gap-2">
                           <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                          Creating account...
+                          Setting up your tiffin...
                         </div>
                       ) : (
                         "Create Account"
@@ -515,9 +570,9 @@ export default function Register() {
               )}
 
                 <div className="text-center text-sm pt-4">
-                  <span className="text-gray-600">Already have an account? </span>
+                  <span className="text-[#7A6A58]">Already have an account? </span>
                   <Link href="/login">
-                    <a className="text-red-600 font-semibold hover:text-red-700 hover:underline transition-colors">
+                    <a className="text-[#C1552E] font-semibold hover:text-[#9C4322] hover:underline transition-colors">
                       Sign in
                     </a>
                   </Link>
