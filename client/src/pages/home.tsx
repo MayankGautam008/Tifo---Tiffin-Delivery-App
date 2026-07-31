@@ -987,7 +987,7 @@ export default function Home() {
               <Input placeholder="Find Your Tiffin..." className="pl-11 pr-12.5 py-6 text-base border-0 rounded-full bg-white shadow-md focus-visible:ring-2 focus-visible:ring-red-400 w-full" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} />
             </div>
             <div className="flex-shrink-0 w-[52px] h-[52px] rounded-full bg-red-600 text-white shadow-lg border-2 border-white flex flex-col items-center justify-center leading-none text-center">
-              <span className="text-[12px] font-extrabold">50%</span>
+              <span className="text-[12px] font-extrabold">20%</span>
               <span className="text-[9px] font-bold">OFF</span>
               <span className="text-[6.5px] font-medium opacity-90">| Items</span>
             </div>
@@ -1041,7 +1041,7 @@ export default function Home() {
               { title: "Our Kitchen", subtitle: "Daily Specials", img: "https://images.unsplash.com/photo-1631452180519-c014fe946bc7?w=200&h=200&fit=crop" },
               { title: "Veg Thali Tiffin", subtitle: "Complete Veg Meals", img: "https://images.unsplash.com/photo-1601050690597-df0568f70950?w=200&h=200&fit=crop" },
               { title: "Add-ons", subtitle: "Lighter Meals", img: "https://images.unsplash.com/photo-1585937421612-70a008356fbe?w=200&h=200&fit=crop" },
-              { title: "Healthy Meals", subtitle: "High Protein, Low-Calorie", img: "https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=200&h=200&fit=crop" },
+              { title: "Healthy Meals", subtitle: "High Protein, Low-Calorie", img: "https://i.pinimg.com/1200x/59/9e/b4/599eb43d743194b2d9987dce32db9a45.jpg" },
             ].map((cat) => (
               <button key={cat.title} onClick={() => cat.title === "Healthy Meals" ? setShowComingSoon(true) : handleFoodCategoryClick(cat.title)} className="flex-shrink-0 w-[72px] sm:w-[88px] md:w-[100px] text-left">
                 <div className="w-[72px] h-[72px] sm:w-[88px] sm:h-[88px] md:w-[100px] md:h-[100px] rounded-2xl overflow-hidden border border-gray-200 shadow-sm bg-white">
@@ -1062,7 +1062,7 @@ export default function Home() {
               <h2 className="text-[15px] sm:text-base md:text-lg font-extrabold text-gray-900 mb-2 leading-tight">Tiffin Meal Options</h2>
               <Card className="rounded-2xl overflow-hidden border border-gray-100 shadow-md cursor-pointer" onClick={() => setShowTiffinOverlay(true)}>
                 <div className="relative">
-                  <img src="https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=400&h=300&fit=crop" alt="Veg Special Tiffin" className="w-full h-24 sm:h-28 md:h-32 object-cover" />
+                  <img src="https://i.pinimg.com/736x/5f/56/b3/5f56b35ba78d9678a79db6fa234ed8c0.jpg" alt="Veg Special Tiffin" className="w-full h-24 sm:h-28 md:h-32 object-cover" />
                   <Bookmark className="absolute top-1.5 right-1.5 w-5 h-5 text-white drop-shadow" />
                   <span className="absolute bottom-1.5 left-1.5 bg-green-800 text-white text-[10px] font-semibold px-1.5 py-0.5 rounded-md">Maa Ka Dabba</span>
                 </div>
@@ -1096,12 +1096,12 @@ export default function Home() {
           <h2 className="text-[15px] sm:text-base md:text-lg font-extrabold text-gray-900 tracking-wide mb-2 leading-tight">RECOMMENDED FOR YOU</h2>
           <div className="flex overflow-x-auto hide-scrollbar gap-2.5 sm:gap-4 pb-1">
             {[
-              { title: "Standard Veg Tiffin", badge: "Rs.175 OFF", img: "https://images.unsplash.com/photo-1631452180519-c014fe946bc7?w=300&h=300&fit=crop" },
-              { title: "Classic Dal Makhani", badge: "Rs.100 OFF Add-ons", img: "https://images.unsplash.com/photo-1585937421612-70a008356fbe?w=300&h=300&fit=crop" },
-              { title: "Paneer Butter Masala Tiffin", badge: "Rs.100 OFF Add-ons", img: "https://images.unsplash.com/photo-1585937421612-70a008356fbe?w=300&h=300&fit=crop" },
-              { title: "White sauce pasta", badge: "Rs.100 OFF Add-ons", img: "https://images.unsplash.com/photo-1585937421612-70a008356fbe?w=300&h=300&fit=crop" },
-              { title: "Paneer Butter Masala Tiffin", badge: "Rs.100 OFF Add-ons", img: "https://images.unsplash.com/photo-1585937421612-70a008356fbe?w=300&h=300&fit=crop" },
-              { title: "Paneer Butter Masala Tiffin", badge: "Rs.100 OFF Add-ons", img: "https://images.unsplash.com/photo-1585937421612-70a008356fbe?w=300&h=300&fit=crop" },
+              { title: "Standard Veg Tiffin", badge: "Rs.75 OFF", img: "https://i.pinimg.com/1200x/1a/52/f7/1a52f771a5c9517f08629af02a9f8f3a.jpg" },
+              { title: "Kadai Paneer", badge: "Rs.100 OFF Add-ons", img: "https://i.pinimg.com/736x/3e/a0/7f/3ea07f98c1ff6304dbe64998d81c43a2.jpg" },
+              { title: "Egg Curry", badge: "Rs.100 OFF Add-ons", img: "https://i.pinimg.com/736x/d1/c9/b3/d1c9b3d0bd722dc465f7ef50292d404e.jpg" },
+              { title: "Chilli Paneer", badge: "Rs.100 OFF Add-ons", img: "https://i.pinimg.com/1200x/0d/f1/ae/0df1ae2879042deee637cee2c7a08ef0.jpg" },
+              { title: "Chilli Chicken", badge: "Rs.100 OFF Add-ons", img: "https://i.pinimg.com/736x/1e/0e/84/1e0e842b5a7fa11de1ea6606af2dbc0d.jpg" },
+              { title: "Dal Tadka", badge: "Rs.100 OFF Add-ons", img: "https://i.pinimg.com/736x/78/07/49/780749ed00ce42f45c5384938632aefa.jpg" },
             ].map((item) => (
               <button key={item.title} onClick={() => handleRecommendedClick(item.title)} className="flex-shrink-0 w-[110px] sm:w-[140px] md:w-[160px] text-left">
                 <div className="relative w-full h-[90px] sm:h-[110px] md:h-[130px] rounded-2xl overflow-hidden border border-gray-200 shadow-sm">
