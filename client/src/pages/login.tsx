@@ -13,7 +13,50 @@ import { apiRequest } from "@/lib/queryClient";
 import { markSellerLandedOnDashboard } from "@/lib/seller-landing";
 import { TurnstileWidget } from "@/components/turnstile-widget";
 import { loginSchema, type LoginCredentials, type AuthResponse } from "@shared/schema";
-import { UtensilsCrossed, Eye, EyeOff, ArrowLeft, Star, Truck, Clock, ShieldCheck } from "lucide-react";
+import { Eye, EyeOff, ArrowLeft, Settings2, CalendarDays, ChefHat, ShieldCheck } from "lucide-react";
+
+/**
+ * TifoMark — the brand glyph: a tiffin bowl cradling a spoon, with a
+ * leaf growing out of it. Reused everywhere instead of a generic
+ * fork/knife icon so the auth screens carry the same identity as the logo.
+ */
+function TifoMark({ className = "w-8 h-8" }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 48 48" fill="none" className={className} aria-hidden="true">
+      <path
+        d="M10 22c0 8.837 6.268 16 14 16s14-7.163 14-16H10Z"
+        fill="white"
+        fillOpacity="0.95"
+      />
+      <path
+        d="M8 22h32M12 22c0 8.837 5.373 16 12 16s12-7.163 12-16"
+        stroke="currentColor"
+        strokeWidth="2.6"
+        strokeLinecap="round"
+      />
+      <path
+        d="M24 22V9m0 0c-1.5-2.6-4-3.6-6.4-2.9"
+        stroke="#6E9C3F"
+        strokeWidth="2.4"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M24 12c1.6-2.2 3.8-3 6-2.4"
+        stroke="#6E9C3F"
+        strokeWidth="2.4"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M30 19c2.4-1.2 4.6-3 6.2-5.4"
+        stroke="currentColor"
+        strokeWidth="2.2"
+        strokeLinecap="round"
+      />
+    </svg>
+  );
+}
 
 export default function Login() {
   const { toast } = useToast();
@@ -43,13 +86,13 @@ export default function Login() {
     onSuccess: (data) => {
       // Pehle login function call karo
       login(data);
-      
+
       // Toast dikhao
       toast({
         title: "Welcome back! 🎉",
-        description: "You've successfully logged in.",
+        description: "Your tiffin, your way — good to see you again.",
       });
-      
+
       // Small delay dekar redirect karo taaki auth context properly update ho jaye
       setTimeout(() => {
         // Data se directly redirect karo - auth context par depend mat karo
@@ -86,10 +129,10 @@ export default function Login() {
       seller: { email: "seller@demo.com", password: "seller123" },
       user: { email: "user@demo.com", password: "user123" }
     };
-    
+
     form.setValue("email", demoCredentials[role].email);
     form.setValue("password", demoCredentials[role].password);
-    
+
     // Submit after a small delay to ensure values are set
     setTimeout(() => {
       onSubmit(demoCredentials[role]);
@@ -101,15 +144,15 @@ export default function Login() {
   };
 
   return (
-    <div className="min-h-screen bg-white">
-      {/* Custom Header with Back and Home buttons */}
+    <div className="min-h-screen bg-[#FBF3E7]">
+      {/* Custom Header with Home button */}
       <div className="relative z-50">
         <div className="absolute top-6 left-6 flex gap-3">
           <Button
             onClick={goHome}
             variant="outline"
             size="sm"
-            className="bg-white border-red-200 hover:bg-red-50 text-red-600 shadow-sm rounded-xl"
+            className="bg-[#FBF3E7] border-[#E7D2AE] hover:bg-[#F3E3CC] text-[#C1552E] shadow-sm rounded-xl"
           >
             <ArrowLeft className="w-4 h-4 mr-2" />
             Home
@@ -119,8 +162,8 @@ export default function Login() {
 
       {/* Background decorative elements */}
       <div className="absolute inset-0 overflow-hidden pointer-events-none">
-        <div className="absolute -top-40 -right-40 w-80 h-80 bg-red-100 rounded-full mix-blend-multiply filter blur-xl opacity-30"></div>
-        <div className="absolute -bottom-40 -left-40 w-80 h-80 bg-red-50 rounded-full mix-blend-multiply filter blur-xl opacity-30"></div>
+        <div className="absolute -top-40 -right-40 w-80 h-80 bg-[#F3E3CC] rounded-full mix-blend-multiply filter blur-xl opacity-60"></div>
+        <div className="absolute -bottom-40 -left-40 w-80 h-80 bg-[#E7D2AE] rounded-full mix-blend-multiply filter blur-xl opacity-50"></div>
       </div>
 
       <div className="relative flex items-center justify-center min-h-screen px-4 py-8">
@@ -129,63 +172,64 @@ export default function Login() {
           <div className="hidden lg:block space-y-8">
             <div className="space-y-6">
               <div className="flex items-center gap-4">
-                <div className="w-16 h-16 bg-red-600 rounded-2xl flex items-center justify-center shadow-lg">
-                  <UtensilsCrossed className="w-8 h-8 text-white" />
+                <div className="w-16 h-16 bg-[#C1552E] rounded-2xl flex items-center justify-center shadow-lg text-white">
+                  <TifoMark className="w-9 h-9" />
                 </div>
                 <div>
-                  <h1 className="text-4xl font-bold text-red-600">Tiffo</h1>
-                  <p className="text-gray-600 mt-1">Fresh Food Delivery</p>
+                  <h1 className="text-4xl font-serif font-bold text-[#C1552E] tracking-tight">tifo</h1>
+                  <p className="text-[#7A6A58] mt-1 text-sm tracking-wide">the right food, right person, right time</p>
                 </div>
               </div>
-              
-              <h2 className="text-5xl font-bold text-gray-900 leading-tight">
-                Welcome back to your <span className="text-red-600">food</span> journey
+
+              <h2 className="text-5xl font-serif font-bold text-[#2B2118] leading-tight">
+                Welcome back to your <span className="text-[#C1552E]">tiffin</span>
               </h2>
-              
-              <p className="text-xl text-gray-600 leading-relaxed">
-                Manage your restaurant, track orders, and grow your business with our powerful platform designed for food entrepreneurs.
+
+              <p className="text-xl text-[#7A6A58] leading-relaxed">
+                Manage your weekly meal plan, tweak tomorrow's thali, or run your kitchen's
+                orders — sign in to pick up right where you left off.
               </p>
             </div>
 
             {/* Features grid */}
             <div className="grid grid-cols-2 gap-4 mt-8">
-              <div className="flex items-start gap-3 p-4 bg-red-50 rounded-2xl border border-red-100">
-                <div className="w-10 h-10 bg-red-100 rounded-xl flex items-center justify-center">
-                  <Truck className="w-5 h-5 text-red-600" />
+              <div className="flex items-start gap-3 p-4 bg-[#F3E3CC] rounded-2xl border border-[#E7D2AE]">
+                <div className="w-10 h-10 bg-white rounded-xl flex items-center justify-center">
+                  <Settings2 className="w-5 h-5 text-[#C1552E]" />
                 </div>
                 <div>
-                  <h3 className="font-semibold text-gray-900">Fast Delivery</h3>
-                  <p className="text-sm text-gray-600 mt-1">30-min delivery guarantee</p>
+                  <h3 className="font-semibold text-[#2B2118]">Customize Your Thali</h3>
+                  <p className="text-sm text-[#7A6A58] mt-1">Swap sabzis, adjust spice, skip what you don't eat</p>
                 </div>
               </div>
-              
-              <div className="flex items-start gap-3 p-4 bg-red-50 rounded-2xl border border-red-100">
-                <div className="w-10 h-10 bg-red-100 rounded-xl flex items-center justify-center">
-                  <Star className="w-5 h-5 text-red-600" />
+
+              <div className="flex items-start gap-3 p-4 bg-[#F3E3CC] rounded-2xl border border-[#E7D2AE]">
+                <div className="w-10 h-10 bg-white rounded-xl flex items-center justify-center">
+                  <CalendarDays className="w-5 h-5 text-[#C1552E]" />
                 </div>
                 <div>
-                  <h3 className="font-semibold text-gray-900">Premium Quality</h3>
-                  <p className="text-sm text-gray-600 mt-1">Fresh ingredients daily</p>
+                  <h3 className="font-semibold text-[#2B2118]">Flexible Tiffin Plans</h3>
+                  <p className="text-sm text-[#7A6A58] mt-1">Pause, skip a day, or switch weekly — anytime</p>
                 </div>
               </div>
-              
-              <div className="flex items-start gap-3 p-4 bg-red-50 rounded-2xl border border-red-100">
-                <div className="w-10 h-10 bg-red-100 rounded-xl flex items-center justify-center">
-                  <ShieldCheck className="w-5 h-5 text-red-600" />
+
+              <div className="flex items-start gap-3 p-4 bg-[#F3E3CC] rounded-2xl border border-[#E7D2AE]">
+                <div className="w-10 h-10 bg-white rounded-xl flex items-center justify-center">
+                  <ChefHat className="w-5 h-5 text-[#C1552E]" />
                 </div>
                 <div>
-                  <h3 className="font-semibold text-gray-900">Safe & Hygienic</h3>
-                  <p className="text-sm text-gray-600 mt-1">Quality assured packaging</p>
+                  <h3 className="font-semibold text-[#2B2118]">Real Home Kitchens</h3>
+                  <p className="text-sm text-[#7A6A58] mt-1">Ghar-jaisa khana, made fresh every day</p>
                 </div>
               </div>
-              
-              <div className="flex items-start gap-3 p-4 bg-red-50 rounded-2xl border border-red-100">
-                <div className="w-10 h-10 bg-red-100 rounded-xl flex items-center justify-center">
-                  <Clock className="w-5 h-5 text-red-600" />
+
+              <div className="flex items-start gap-3 p-4 bg-[#F3E3CC] rounded-2xl border border-[#E7D2AE]">
+                <div className="w-10 h-10 bg-white rounded-xl flex items-center justify-center">
+                  <ShieldCheck className="w-5 h-5 text-[#C1552E]" />
                 </div>
                 <div>
-                  <h3 className="font-semibold text-gray-900">24/7 Support</h3>
-                  <p className="text-sm text-gray-600 mt-1">Always here to help</p>
+                  <h3 className="font-semibold text-[#2B2118]">Hygiene Verified</h3>
+                  <p className="text-sm text-[#7A6A58] mt-1">Every kitchen checked before it's listed</p>
                 </div>
               </div>
             </div>
@@ -193,23 +237,26 @@ export default function Login() {
 
           {/* Right side - Login card */}
           <div className="flex justify-center">
-            <Card className="w-full max-w-md border-2 border-red-100 shadow-2xl bg-white rounded-3xl overflow-hidden relative">
-              <div className="absolute top-0 left-0 right-0 h-2 bg-red-600"></div>
-              
+            <Card className="relative w-full max-w-md border-2 border-[#E7D2AE] shadow-2xl bg-white rounded-3xl overflow-hidden">
+              <div className="absolute top-0 left-0 right-0 h-2 bg-[#C1552E]"></div>
+              <div className="absolute top-5 -right-11 rotate-45 bg-[#6E9C3F] text-white text-[10px] font-semibold tracking-wide px-12 py-1 shadow-md">
+                CUSTOM TIFFIN, DAILY
+              </div>
+
               <CardHeader className="text-center pb-6 pt-8">
                 <div className="flex justify-center mb-4">
-                  <div className="w-20 h-20 bg-red-600 rounded-2xl flex items-center justify-center shadow-lg">
-                    <UtensilsCrossed className="w-10 h-10 text-white" />
+                  <div className="w-20 h-20 bg-[#C1552E] rounded-2xl flex items-center justify-center shadow-lg text-white">
+                    <TifoMark className="w-11 h-11" />
                   </div>
                 </div>
-                <CardTitle className="font-bold text-3xl text-gray-900">
+                <CardTitle className="font-serif font-bold text-3xl text-[#2B2118]">
                   Welcome Back
                 </CardTitle>
-                <CardDescription className="text-lg text-gray-600 mt-2">
-                  Sign in to continue to your dashboard
+                <CardDescription className="text-lg text-[#7A6A58] mt-2">
+                  Sign in to manage your tiffin
                 </CardDescription>
               </CardHeader>
-              
+
               <CardContent className="space-y-6 pb-8">
                 <Form {...form}>
                   <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
@@ -218,7 +265,7 @@ export default function Login() {
                       name="email"
                       render={({ field }) => (
                         <FormItem>
-                          <FormLabel className="text-sm font-medium text-gray-700">
+                          <FormLabel className="text-sm font-medium text-[#2B2118]">
                             Email Address
                           </FormLabel>
                           <FormControl>
@@ -227,7 +274,7 @@ export default function Login() {
                                 placeholder="user@gmail.com"
                                 type="email"
                                 {...field}
-                                className="h-12 px-4 rounded-xl border-red-200 focus:ring-2 focus:ring-red-500 focus:border-red-500 bg-white"
+                                className="h-12 px-4 rounded-xl border-[#E7D2AE] focus:ring-2 focus:ring-[#C1552E] focus:border-[#C1552E] bg-white"
                               />
                             </div>
                           </FormControl>
@@ -241,7 +288,7 @@ export default function Login() {
                       name="password"
                       render={({ field }) => (
                         <FormItem>
-                          <FormLabel className="text-sm font-medium text-gray-700">
+                          <FormLabel className="text-sm font-medium text-[#2B2118]">
                             Password
                           </FormLabel>
                           <FormControl>
@@ -250,12 +297,12 @@ export default function Login() {
                                 placeholder="Enter your password"
                                 type={showPassword ? "text" : "password"}
                                 {...field}
-                                className="h-12 px-4 pr-12 rounded-xl border-red-200 focus:ring-2 focus:ring-red-500 focus:border-red-500 bg-white"
+                                className="h-12 px-4 pr-12 rounded-xl border-[#E7D2AE] focus:ring-2 focus:ring-[#C1552E] focus:border-[#C1552E] bg-white"
                               />
                               <button
                                 type="button"
                                 onClick={() => setShowPassword(!showPassword)}
-                                className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-500 hover:text-gray-700"
+                                className="absolute right-3 top-1/2 transform -translate-y-1/2 text-[#7A6A58] hover:text-[#2B2118]"
                               >
                                 {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
                               </button>
@@ -268,7 +315,7 @@ export default function Login() {
 
                     <div className="text-right">
                       <Link href="/forgot-password">
-                        <a className="text-sm text-red-600 hover:text-red-700 font-medium hover:underline transition-colors">
+                        <a className="text-sm text-[#C1552E] hover:text-[#9C4322] font-medium hover:underline transition-colors">
                           Forgot your password?
                         </a>
                       </Link>
@@ -278,7 +325,7 @@ export default function Login() {
 
                     <Button
                       type="submit"
-                      className="w-full h-12 bg-red-600 hover:bg-red-700 text-white font-semibold rounded-xl shadow-lg transition-all duration-200 transform hover:scale-[1.02] disabled:opacity-50"
+                      className="w-full h-12 bg-[#C1552E] hover:bg-[#9C4322] text-white font-semibold rounded-xl shadow-lg transition-all duration-200 transform hover:scale-[1.02] disabled:opacity-50"
                       disabled={loginMutation.isPending || (captchaConfigured && !turnstileToken)}
                     >
                       {loginMutation.isPending ? (
@@ -294,9 +341,9 @@ export default function Login() {
                 </Form>
 
                 <div className="text-center text-sm">
-                  <span className="text-gray-600">Don't have an account? </span>
+                  <span className="text-[#7A6A58]">Don't have an account? </span>
                   <Link href="/register">
-                    <a className="text-red-600 font-semibold hover:text-red-700 hover:underline transition-colors">
+                    <a className="text-[#C1552E] font-semibold hover:text-[#9C4322] hover:underline transition-colors">
                       Create account
                     </a>
                   </Link>
