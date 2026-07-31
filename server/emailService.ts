@@ -1,22 +1,78 @@
 import nodemailer from 'nodemailer';
 import dotenv from 'dotenv';
 
-
 // ✅ FORCE ENVIRONMENT RELOAD
 dotenv.config();
+
+const BRAND_NAME = 'TifoIndia';
+const BRAND_TAGLINE = 'Fresh Tiffin Delivery';
+const ACCENT = '#b91c1c';
 
 // ✅ ENVIRONMENT VARIABLES CHECK WITH DETAILED DEBUGGING
 const checkEmailConfig = () => {
   const emailUser = process.env.EMAIL_USER;
   const emailPass = process.env.EMAIL_PASS;
-  
+
   console.log('\n🔧 EMAIL CONFIGURATION CHECK:');
   console.log('   📧 EMAIL_USER:', emailUser ? `${emailUser.substring(0, 3)}...` : '❌ NOT FOUND');
   console.log('   🔐 EMAIL_PASS:', emailPass ? `✅ FOUND (${emailPass.length} chars)` : '❌ NOT FOUND');
   console.log('   📁 All ENV vars:', Object.keys(process.env).filter(key => key.includes('EMAIL')));
-  
+
   return { emailUser, emailPass };
 };
+
+// ✅ Shared professional email shell — consistent header/footer across every
+// transactional email, sober typography, minimal color, no emoji clutter.
+function wrapEmail(bodyHtml: string): string {
+  return `
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f3f4f6;padding:24px 0;font-family:Arial,Helvetica,sans-serif;">
+  <tr>
+    <td align="center">
+      <table role="presentation" width="600" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:8px;overflow:hidden;border:1px solid #e5e7eb;max-width:600px;">
+        <tr>
+          <td style="background:${ACCENT};padding:28px 32px;">
+            <h1 style="margin:0;font-size:20px;color:#ffffff;letter-spacing:0.3px;">${BRAND_NAME}</h1>
+            <p style="margin:4px 0 0;color:#fecaca;font-size:12px;">${BRAND_TAGLINE}</p>
+          </td>
+        </tr>
+        <tr>
+          <td style="padding:32px;color:#1f2937;font-size:14px;line-height:1.6;">
+            ${bodyHtml}
+          </td>
+        </tr>
+        <tr>
+          <td style="background:#f9fafb;padding:18px 32px;border-top:1px solid #e5e7eb;">
+            <p style="margin:0;color:#9ca3af;font-size:12px;">This is an automated message from ${BRAND_NAME}. Please do not reply directly to this email.</p>
+            <p style="margin:4px 0 0;color:#9ca3af;font-size:12px;">&copy; ${new Date().getFullYear()} ${BRAND_NAME}. All rights reserved.</p>
+          </td>
+        </tr>
+      </table>
+    </td>
+  </tr>
+</table>`;
+}
+
+function otpBlock(otp: string, validity: string): string {
+  return `
+<div style="text-align:center;margin:24px 0;padding:20px;background:#fef2f2;border:1px solid #fecaca;border-radius:8px;">
+  <div style="font-size:30px;font-weight:bold;letter-spacing:4px;color:${ACCENT};">${otp}</div>
+  <p style="margin:8px 0 0;color:#6b7280;font-size:12px;">Valid for ${validity}</p>
+</div>`;
+}
+
+function sectionTable(title: string, rows: [string, string][]): string {
+  return `
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;margin-bottom:16px;border:1px solid #e5e7eb;border-radius:4px;overflow:hidden;">
+  <tr style="background:#f9fafb;">
+    <td colspan="2" style="padding:10px 14px;font-weight:bold;color:#111827;border-bottom:1px solid #e5e7eb;font-size:13px;">${title}</td>
+  </tr>
+  ${rows.map(([label, value]) => `
+  <tr>
+    <td style="padding:8px 14px;color:#6b7280;width:40%;font-size:13px;">${label}</td>
+    <td style="padding:8px 14px;font-size:13px;">${value}</td>
+  </tr>`).join('')}
+</table>`;
+}
 
 // ✅ Brevo HTTP API transporter — uses HTTPS (port 443), which Render's free
 // tier does NOT block (unlike SMTP ports 25/465/587, which Render blocks on
@@ -36,7 +92,7 @@ const createBrevoApiTransporter = () => {
   console.log('✅ USING BREVO HTTP API - Emails will be sent via api.brevo.com (works on Render free tier)');
   return {
     sendMail: async (mailOptions: any) => {
-      const sender = parseAddress(mailOptions.from || process.env.EMAIL_FROM || 'noreply@tiffo.com');
+      const sender = parseAddress(mailOptions.from || process.env.EMAIL_FROM || `noreply@tifoindia.com`);
       const toList = (Array.isArray(mailOptions.to) ? mailOptions.to : [mailOptions.to])
         .filter(Boolean)
         .map((addr: string) => parseAddress(addr));
@@ -49,7 +105,7 @@ const createBrevoApiTransporter = () => {
           'accept': 'application/json',
         },
         body: JSON.stringify({
-          sender: { email: sender.email, name: sender.name || 'Tiffo' },
+          sender: { email: sender.email, name: sender.name || BRAND_NAME },
           to: toList,
           subject: mailOptions.subject,
           htmlContent: mailOptions.html,
@@ -92,9 +148,6 @@ const createTransporter = () => {
   }
 
   // ✅ Preferred: a real transactional SMTP relay (Brevo / Resend / SES / Mailgun etc.)
-  // Set EMAIL_HOST + EMAIL_PORT in .env to use this path instead of raw Gmail.
-  // This is what actually fixes inbox-vs-spam placement, because these providers
-  // let you verify your own sending domain with SPF/DKIM/DMARC records.
   if (process.env.EMAIL_HOST) {
     console.log(`✅ USING SMTP RELAY (${process.env.EMAIL_HOST}) - Emails will be sent via your configured provider`);
     return nodemailer.createTransport({
@@ -138,8 +191,8 @@ const createConsoleTransporter = () => {
       console.log('📧 SUBJECT:', mailOptions.subject);
       console.log('📧 STATUS: Email would be sent in production');
       console.log('📧 ======================================================\n');
-      return Promise.resolve({ 
-        messageId: 'console-mock-id', 
+      return Promise.resolve({
+        messageId: 'console-mock-id',
         response: 'Email logged to console'
       });
     },
@@ -184,38 +237,20 @@ export async function testEmailSending(toEmail?: string) {
     }
 
     console.log('🧪 Testing email sending to:', testEmail);
-    
+
     const mailOptions = {
-      from: process.env.EMAIL_FROM || 'noreply@tiffo.com',
+      from: process.env.EMAIL_FROM || `noreply@tifoindia.com`,
       to: testEmail,
-      subject: 'Tiffo - Email Configuration Test',
-      html: `
-        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; border: 2px solid #dc2626; border-radius: 10px; overflow: hidden;">
-          <div style="background: #dc2626; padding: 30px; text-align: center; color: white;">
-            <h1 style="margin: 0; font-size: 28px;">Tiffo</h1>
-            <p style="margin: 5px 0 0 0; opacity: 0.9;">Fresh Food Delivery</p>
-          </div>
-          
-          <div style="padding: 30px; background: white;">
-            <h2 style="color: #dc2626; margin-bottom: 20px; text-align: center;">✅ Email Test Successful!</h2>
-            
-            <p style="color: #4b5563; line-height: 1.6; text-align: center;">
-              Congratulations! Your email configuration is working correctly.
-            </p>
-            
-            <div style="background: #fef2f2; padding: 20px; border-radius: 8px; border: 1px solid #fecaca; margin: 20px 0;">
-              <h3 style="color: #dc2626; margin-top: 0; text-align: center;">Test Details</h3>
-              <p style="text-align: center;"><strong>Server:</strong> Tiffo Backend</p>
-              <p style="text-align: center;"><strong>Time:</strong> ${new Date().toLocaleString()}</p>
-              <p style="text-align: center;"><strong>Status:</strong> ✅ Working</p>
-            </div>
-          </div>
-          
-          <div style="background: #dc2626; padding: 20px; text-align: center; color: white; font-size: 14px;">
-            <p style="margin: 0;">© ${new Date().getFullYear()} Tiffo. All rights reserved.</p>
-          </div>
-        </div>
-      `,
+      subject: `${BRAND_NAME} — Email Configuration Test`,
+      html: wrapEmail(`
+        <h2 style="color:#111827;margin:0 0 12px;font-size:18px;">Email configuration test successful</h2>
+        <p style="color:#4b5563;margin:0 0 16px;">This confirms your transactional email setup is working correctly.</p>
+        ${sectionTable('Test Details', [
+          ['Server', `${BRAND_NAME} Backend`],
+          ['Time', new Date().toLocaleString()],
+          ['Status', 'Working'],
+        ])}
+      `),
     };
 
     const result = await transporter.sendMail(mailOptions);
@@ -234,73 +269,44 @@ export async function sendPasswordResetOTP(email: string, otp: string, userName:
     console.log(`🔢 OTP: ${otp}`);
 
     const mailOptions = {
-      from: `"Tiffo" <${process.env.EMAIL_FROM || 'noreply@tiffo.com'}>`,
+      from: `"${BRAND_NAME}" <${process.env.EMAIL_FROM || `noreply@tifoindia.com`}>`,
       to: email,
-      subject: 'Your Tiffo verification code',
-      text: `Hello ${userName},\n\nYour Tiffo password reset code is: ${otp}\n\nThis code is valid for 15 minutes. If you did not request this, you can ignore this email.\n\n- Tiffo`,
-      html: `
-        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; border: 2px solid #dc2626; border-radius: 10px; overflow: hidden;">
-          <div style="background: #dc2626; padding: 30px; text-align: center; color: white;">
-            <h1 style="margin: 0; font-size: 28px;">Tiffo</h1>
-            <p style="margin: 5px 0 0 0; opacity: 0.9;">Fresh Food Delivery</p>
-          </div>
-          
-          <div style="padding: 30px; background: white;">
-            <h2 style="color: #dc2626; margin-bottom: 20px; text-align: center;">Password Reset OTP</h2>
-            
-            <p>Hello <strong>${userName}</strong>,</p>
-            <p>Use this OTP to reset your password:</p>
-            
-            <div style="text-align: center; margin: 25px 0; padding: 20px; background: #fef2f2; border-radius: 8px;">
-              <div style="font-size: 32px; font-weight: bold; color: #dc2626;">${otp}</div>
-              <p style="color: #666; font-size: 14px;">Valid for 15 minutes</p>
-            </div>
-            <p style="color: #9ca3af; font-size: 12px; text-align: center;">If you did not request this, you can safely ignore this email.</p>
-          </div>
-        </div>
-      `,
+      subject: `${BRAND_NAME} verification code`,
+      text: `Hello ${userName},\n\nYour ${BRAND_NAME} password reset code is: ${otp}\n\nThis code is valid for 15 minutes. If you did not request this, you can ignore this email.\n\n- ${BRAND_NAME}`,
+      html: wrapEmail(`
+        <h2 style="color:#111827;margin:0 0 12px;font-size:18px;">Password reset code</h2>
+        <p style="color:#4b5563;margin:0;">Hello <strong>${userName}</strong>,</p>
+        <p style="color:#4b5563;margin:8px 0 0;">Use the code below to reset your password.</p>
+        ${otpBlock(otp, '15 minutes')}
+        <p style="color:#9ca3af;font-size:12px;text-align:center;margin:0;">If you did not request this, you can safely ignore this email.</p>
+      `),
     };
 
     await transporter.sendMail(mailOptions);
     console.log(`✅ OTP email sent successfully`);
-    
+
   } catch (error: any) {
     console.error('❌ Email error:', error.message);
     console.log(`📋 OTP for manual use: ${otp}`);
   }
 }
 
-// ✅ NEW: Email verification OTP sent at signup (FREE — same Gmail SMTP
-// transporter used for password reset, no paid service involved).
+// ✅ Email verification OTP sent at signup
 export async function sendSignupOTP(email: string, otp: string, userName: string): Promise<void> {
   try {
     console.log(`\n📧 SENDING SIGNUP VERIFICATION OTP TO: ${email}`);
     console.log(`🔢 OTP: ${otp}`);
 
     const mailOptions = {
-      from: process.env.EMAIL_FROM || 'noreply@tiffo.com',
+      from: process.env.EMAIL_FROM || `noreply@tifoindia.com`,
       to: email,
-      subject: 'Tiffo - Verify Your Email',
-      html: `
-        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; border: 2px solid #dc2626; border-radius: 10px; overflow: hidden;">
-          <div style="background: #dc2626; padding: 30px; text-align: center; color: white;">
-            <h1 style="margin: 0; font-size: 28px;">Tiffo</h1>
-            <p style="margin: 5px 0 0 0; opacity: 0.9;">Fresh Food Delivery</p>
-          </div>
-
-          <div style="padding: 30px; background: white;">
-            <h2 style="color: #dc2626; margin-bottom: 20px; text-align: center;">Verify Your Email</h2>
-
-            <p>Hello <strong>${userName}</strong>,</p>
-            <p>Use this OTP to verify your email and finish creating your account:</p>
-
-            <div style="text-align: center; margin: 25px 0; padding: 20px; background: #fef2f2; border-radius: 8px;">
-              <div style="font-size: 32px; font-weight: bold; color: #dc2626;">${otp}</div>
-              <p style="color: #666; font-size: 14px;">Valid for 10 minutes</p>
-            </div>
-          </div>
-        </div>
-      `,
+      subject: `${BRAND_NAME} — Verify your email`,
+      html: wrapEmail(`
+        <h2 style="color:#111827;margin:0 0 12px;font-size:18px;">Verify your email</h2>
+        <p style="color:#4b5563;margin:0;">Hello <strong>${userName}</strong>,</p>
+        <p style="color:#4b5563;margin:8px 0 0;">Use the code below to verify your email and finish creating your account.</p>
+        ${otpBlock(otp, '10 minutes')}
+      `),
     };
 
     await transporter.sendMail(mailOptions);
@@ -332,127 +338,71 @@ export async function sendBookingConfirmationToCustomer(
 ): Promise<void> {
   try {
     const subtotal = totalPrice + discountAmount;
-    
-    // Calculate add-ons total
     const addOnsTotal = addOns.reduce((total, addOn) => total + (addOn.price * addOn.quantity), 0);
-    
-    // Calculate customizations total
     const customizationsTotal = weeklyCustomizations.reduce((total, custom) => {
       const applicableDays = custom.days.filter((day: string) => selectedDays.includes(day));
       return total + (custom.price * applicableDays.length);
     }, 0);
-
     const basePrice = subtotal - addOnsTotal - customizationsTotal;
 
+    const orderRows: [string, string][] = [
+      ['Item', tiffinTitle],
+      ['Seller', sellerName],
+      ['Seller Contact', sellerPhone],
+      ['Delivery Date', deliveryDate],
+      ['Time Slot', slot],
+      ['Quantity', String(quantity)],
+    ];
+    if (selectedDays && selectedDays.length > 0) {
+      orderRows.push(['Selected Days', selectedDays.join(', ')]);
+    }
+
+    const addOnsHtml = addOns && addOns.length > 0 ? sectionTable(
+      'Add-ons',
+      [
+        ...addOns.map((a: any): [string, string] => [`${a.name} x ${a.quantity}`, `Rs. ${a.price * a.quantity}`]),
+        ['Add-ons Total', `Rs. ${addOnsTotal}`],
+      ]
+    ) : '';
+
+    const customizationsHtml = weeklyCustomizations && weeklyCustomizations.length > 0 ? sectionTable(
+      'Weekly Customizations',
+      [
+        ...weeklyCustomizations.map((custom: any): [string, string] => {
+          const applicableDays = custom.days.filter((day: string) => selectedDays.includes(day));
+          const totalCost = custom.price * applicableDays.length;
+          return [`${custom.name} (${applicableDays.join(', ')})`, `Rs. ${totalCost}`];
+        }),
+        ['Customizations Total', `Rs. ${customizationsTotal}`],
+      ]
+    ) : '';
+
+    const priceRows: [string, string][] = [['Base Price', `Rs. ${basePrice}`]];
+    if (addOnsTotal > 0) priceRows.push(['Add-ons', `+ Rs. ${addOnsTotal}`]);
+    if (customizationsTotal > 0) priceRows.push(['Customizations', `+ Rs. ${customizationsTotal}`]);
+    if (discountAmount > 0) priceRows.push([`Discount${couponCode ? ` (${couponCode})` : ''}`, `- Rs. ${discountAmount}`]);
+    priceRows.push(['Total Amount', `Rs. ${totalPrice}`]);
+
     const mailOptions = {
-      from: `"Tiffo" <${process.env.EMAIL_FROM || 'noreply@tiffinservice.com'}>`,
+      from: `"${BRAND_NAME}" <${process.env.EMAIL_FROM || `noreply@tifoindia.com`}>`,
       to: customerEmail,
-      subject: `Order Confirmation - ${tiffinTitle}`,
-      html: `
-        <div style="font-family: Arial, Helvetica, sans-serif; max-width: 600px; margin: 0 auto; border: 1px solid #e2e8f0; border-radius: 6px; overflow: hidden; color: #1f2937;">
-          <div style="background: #b91c1c; padding: 24px 30px; text-align: left;">
-            <h1 style="margin: 0; font-size: 22px; color: #ffffff; letter-spacing: 0.5px;">Tiffo</h1>
-            <p style="margin: 4px 0 0 0; color: #fecaca; font-size: 13px;">Fresh Food Delivery</p>
-          </div>
-
-          <div style="padding: 30px; background: #ffffff;">
-            <h2 style="color: #111827; margin: 0 0 6px 0; font-size: 19px;">Your order is confirmed</h2>
-            <p style="color: #4b5563; line-height: 1.6; margin: 0 0 20px 0;">
-              Hello ${customerName}, thank you for your order. Your booking details are below.
-            </p>
-
-            <!-- Order Summary -->
-            <table style="width: 100%; border-collapse: collapse; margin-bottom: 20px; border: 1px solid #e5e7eb; border-radius: 4px; overflow: hidden;">
-              <tr style="background: #f9fafb;">
-                <td colspan="2" style="padding: 10px 14px; font-weight: bold; color: #111827; border-bottom: 1px solid #e5e7eb; font-size: 14px;">Order Summary</td>
-              </tr>
-              <tr><td style="padding: 8px 14px; color: #6b7280; width: 40%;">Item</td><td style="padding: 8px 14px;">${tiffinTitle}</td></tr>
-              <tr><td style="padding: 8px 14px; color: #6b7280;">Seller</td><td style="padding: 8px 14px;">${sellerName}</td></tr>
-              <tr><td style="padding: 8px 14px; color: #6b7280;">Seller Contact</td><td style="padding: 8px 14px;">${sellerPhone}</td></tr>
-              <tr><td style="padding: 8px 14px; color: #6b7280;">Delivery Date</td><td style="padding: 8px 14px;">${deliveryDate}</td></tr>
-              <tr><td style="padding: 8px 14px; color: #6b7280;">Time Slot</td><td style="padding: 8px 14px;">${slot}</td></tr>
-              <tr><td style="padding: 8px 14px; color: #6b7280;">Quantity</td><td style="padding: 8px 14px;">${quantity}</td></tr>
-              ${selectedDays && selectedDays.length > 0 ? `
-              <tr><td style="padding: 8px 14px; color: #6b7280;">Selected Days</td><td style="padding: 8px 14px;">${selectedDays.join(', ')}</td></tr>
-              ` : ''}
-            </table>
-
-            ${addOns && addOns.length > 0 ? `
-            <table style="width: 100%; border-collapse: collapse; margin-bottom: 20px; border: 1px solid #e5e7eb; border-radius: 4px; overflow: hidden;">
-              <tr style="background: #f9fafb;">
-                <td colspan="2" style="padding: 10px 14px; font-weight: bold; color: #111827; border-bottom: 1px solid #e5e7eb; font-size: 14px;">Add-ons</td>
-              </tr>
-              ${addOns.map(addOn => `
-              <tr>
-                <td style="padding: 8px 14px; color: #374151;">${addOn.name} x ${addOn.quantity}</td>
-                <td style="padding: 8px 14px; text-align: right;">Rs. ${addOn.price * addOn.quantity}</td>
-              </tr>
-              `).join('')}
-              <tr>
-                <td style="padding: 8px 14px; font-weight: bold; border-top: 1px solid #e5e7eb;">Add-ons Total</td>
-                <td style="padding: 8px 14px; text-align: right; font-weight: bold; border-top: 1px solid #e5e7eb;">Rs. ${addOnsTotal}</td>
-              </tr>
-            </table>
-            ` : ''}
-
-            ${weeklyCustomizations && weeklyCustomizations.length > 0 ? `
-            <table style="width: 100%; border-collapse: collapse; margin-bottom: 20px; border: 1px solid #e5e7eb; border-radius: 4px; overflow: hidden;">
-              <tr style="background: #f9fafb;">
-                <td colspan="2" style="padding: 10px 14px; font-weight: bold; color: #111827; border-bottom: 1px solid #e5e7eb; font-size: 14px;">Weekly Customizations</td>
-              </tr>
-              ${weeklyCustomizations.map(custom => {
-                const applicableDays = custom.days.filter((day: string) => selectedDays.includes(day));
-                const totalCost = custom.price * applicableDays.length;
-                return `
-                <tr>
-                  <td style="padding: 8px 14px; color: #374151;">
-                    <div><strong>${custom.name}</strong></div>
-                    <div style="font-size: 12px; color: #6b7280;">${custom.description} - Applied to: ${applicableDays.join(', ')}</div>
-                  </td>
-                  <td style="padding: 8px 14px; text-align: right; vertical-align: top;">Rs. ${totalCost}</td>
-                </tr>
-                `;
-              }).join('')}
-              <tr>
-                <td style="padding: 8px 14px; font-weight: bold; border-top: 1px solid #e5e7eb;">Customizations Total</td>
-                <td style="padding: 8px 14px; text-align: right; font-weight: bold; border-top: 1px solid #e5e7eb;">Rs. ${customizationsTotal}</td>
-              </tr>
-            </table>
-            ` : ''}
-
-            ${customization ? `
-            <div style="background: #f9fafb; padding: 14px; border-radius: 4px; border: 1px solid #e5e7eb; margin-bottom: 20px;">
-              <div style="font-weight: bold; color: #111827; margin-bottom: 4px; font-size: 13px;">Special Instructions</div>
-              <div style="color: #4b5563; font-style: italic; font-size: 14px;">"${customization}"</div>
-            </div>
-            ` : ''}
-
-            <!-- Price Breakdown -->
-            <table style="width: 100%; border-collapse: collapse; margin-bottom: 20px; border: 1px solid #e5e7eb; border-radius: 4px; overflow: hidden;">
-              <tr style="background: #f9fafb;">
-                <td colspan="2" style="padding: 10px 14px; font-weight: bold; color: #111827; border-bottom: 1px solid #e5e7eb; font-size: 14px;">Price Breakdown</td>
-              </tr>
-              <tr><td style="padding: 8px 14px; color: #374151;">Base Price</td><td style="padding: 8px 14px; text-align: right;">Rs. ${basePrice}</td></tr>
-              ${addOnsTotal > 0 ? `<tr><td style="padding: 8px 14px; color: #374151;">Add-ons</td><td style="padding: 8px 14px; text-align: right;">+ Rs. ${addOnsTotal}</td></tr>` : ''}
-              ${customizationsTotal > 0 ? `<tr><td style="padding: 8px 14px; color: #374151;">Customizations</td><td style="padding: 8px 14px; text-align: right;">+ Rs. ${customizationsTotal}</td></tr>` : ''}
-              ${discountAmount > 0 ? `<tr><td style="padding: 8px 14px; color: #374151;">Discount${couponCode ? ` (${couponCode})` : ''}</td><td style="padding: 8px 14px; text-align: right; color: #b91c1c;">- Rs. ${discountAmount}</td></tr>` : ''}
-              <tr>
-                <td style="padding: 12px 14px; font-weight: bold; font-size: 16px; border-top: 2px solid #111827;">Total Amount</td>
-                <td style="padding: 12px 14px; text-align: right; font-weight: bold; font-size: 16px; border-top: 2px solid #111827; color: #b91c1c;">Rs. ${totalPrice}</td>
-              </tr>
-            </table>
-
-            <p style="color: #6b7280; line-height: 1.6; font-size: 13px; margin: 0;">
-              Your food will be prepared fresh and delivered on time. If you have any questions about this order, please contact the seller directly using the details above.
-            </p>
-          </div>
-
-          <div style="background: #f9fafb; padding: 16px 30px; text-align: left; color: #9ca3af; font-size: 12px; border-top: 1px solid #e5e7eb;">
-            <p style="margin: 0;">This is an automated message from Tiffo. Please do not reply directly to this email.</p>
-            <p style="margin: 4px 0 0 0;">&copy; ${new Date().getFullYear()} Tiffo. All rights reserved.</p>
-          </div>
-        </div>
-      `,
+      subject: `Order confirmation — ${tiffinTitle}`,
+      html: wrapEmail(`
+        <h2 style="color:#111827;margin:0 0 6px;font-size:18px;">Your order is confirmed</h2>
+        <p style="color:#4b5563;margin:0 0 20px;">Hello ${customerName}, thank you for your order. Your booking details are below.</p>
+        ${sectionTable('Order Summary', orderRows)}
+        ${addOnsHtml}
+        ${customizationsHtml}
+        ${customization ? `
+        <div style="background:#f9fafb;padding:14px;border-radius:4px;border:1px solid #e5e7eb;margin-bottom:16px;">
+          <div style="font-weight:bold;color:#111827;margin-bottom:4px;font-size:13px;">Special Instructions</div>
+          <div style="color:#4b5563;font-style:italic;font-size:13px;">"${customization}"</div>
+        </div>` : ''}
+        ${sectionTable('Price Breakdown', priceRows)}
+        <p style="color:#6b7280;font-size:12px;margin:0;">
+          Your food will be prepared fresh and delivered on time. For any questions about this order, please contact the seller directly using the details above.
+        </p>
+      `),
     };
 
     await transporter.sendMail(mailOptions);
@@ -463,8 +413,6 @@ export async function sendBookingConfirmationToCustomer(
   }
 }
 
-
-
 // ✅ Send order notification to seller - WITH ADD-ONS & CUSTOMIZATIONS
 export async function sendOrderNotificationToSeller(
   sellerEmail: string,
@@ -473,7 +421,6 @@ export async function sendOrderNotificationToSeller(
 ) {
   try {
     const {
-      customerAddress,
       customerCity,
       customerName,
       customerEmail,
@@ -495,7 +442,6 @@ export async function sendOrderNotificationToSeller(
       subtotal = totalPrice + discountAmount
     } = orderDetails;
 
-    // Calculate totals for seller email
     const addOnsTotal = addOns.reduce((total: number, addOn: any) => total + (addOn.price * addOn.quantity), 0);
     const customizationsTotal = weeklyCustomizations.reduce((total: number, custom: any) => {
       const applicableDays = custom.days.filter((day: string) => selectedDays.includes(day));
@@ -503,123 +449,67 @@ export async function sendOrderNotificationToSeller(
     }, 0);
     const basePrice = subtotal - addOnsTotal - customizationsTotal;
 
+    const orderRows: [string, string][] = [
+      ['Item', tiffinTitle],
+      ['Type', bookingType],
+      ['Quantity', String(quantity)],
+      ['Delivery', `${deliveryDate} at ${slot}`],
+    ];
+    if (selectedDays && selectedDays.length > 0) {
+      orderRows.push(['Selected Days', selectedDays.join(', ')]);
+    }
+
+    const customerRows: [string, string][] = [
+      ['Name', customerName],
+      ['Phone', customerPhone],
+      ['Email', customerEmail],
+      ['Address', `${deliveryAddress}, ${customerCity}`],
+    ];
+
+    const addOnsHtml = addOns && addOns.length > 0 ? sectionTable(
+      'Add-ons Requested',
+      addOns.map((a: any): [string, string] => [`${a.name} x ${a.quantity}`, `Rs. ${a.price * a.quantity}`])
+    ) : '';
+
+    const customizationsHtml = weeklyCustomizations && weeklyCustomizations.length > 0 ? sectionTable(
+      'Customizations Requested',
+      weeklyCustomizations.map((custom: any): [string, string] => {
+        const applicableDays = custom.days.filter((day: string) => selectedDays.includes(day));
+        const totalCost = custom.price * applicableDays.length;
+        return [`${custom.name} (${applicableDays.join(', ')})`, `Rs. ${totalCost}`];
+      })
+    ) : '';
+
+    const valueRows: [string, string][] = [['Base Price', `Rs. ${basePrice}`]];
+    if (addOnsTotal > 0) valueRows.push(['Add-ons', `+ Rs. ${addOnsTotal}`]);
+    if (customizationsTotal > 0) valueRows.push(['Customizations', `+ Rs. ${customizationsTotal}`]);
+    valueRows.push(['Subtotal', `Rs. ${subtotal}`]);
+    if (discountAmount > 0) valueRows.push([`Customer Discount${couponCode ? ` (${couponCode})` : ''}`, `- Rs. ${discountAmount}`]);
+    valueRows.push(['Final Amount', `Rs. ${totalPrice}`]);
+
     const mailOptions = {
-      from: `"Tiffo" <${process.env.EMAIL_FROM || 'noreply@tiffinservice.com'}>`,
+      from: `"${BRAND_NAME}" <${process.env.EMAIL_FROM || `noreply@tifoindia.com`}>`,
       to: sellerEmail,
-      subject: `New Order #${orderId} - ${tiffinTitle} - Rs. ${totalPrice}`,
-      html: `
-        <div style="font-family: Arial, Helvetica, sans-serif; max-width: 600px; margin: 0 auto; border: 1px solid #e2e8f0; border-radius: 6px; overflow: hidden; color: #1f2937;">
-          <!-- Header -->
-          <div style="background: #b91c1c; padding: 24px 30px; text-align: left;">
-            <h1 style="margin: 0; font-size: 22px; color: #ffffff; letter-spacing: 0.5px;">Tiffo</h1>
-            <p style="margin: 4px 0 0 0; color: #fecaca; font-size: 13px;">Fresh Food Delivery</p>
-          </div>
-
-          <!-- Content -->
-          <div style="padding: 30px; background: #ffffff;">
-            <h2 style="color: #111827; margin: 0 0 6px 0; font-size: 19px;">New order received</h2>
-            <p style="color: #4b5563; line-height: 1.6; margin: 0 0 20px 0;">
-              You have received a new order. Please review the details below and prepare accordingly.
-            </p>
-
-            <!-- Order Summary -->
-            <table style="width: 100%; border-collapse: collapse; margin-bottom: 20px; border: 1px solid #e5e7eb; border-radius: 4px; overflow: hidden;">
-              <tr style="background: #f9fafb;">
-                <td colspan="2" style="padding: 10px 14px; font-weight: bold; color: #111827; border-bottom: 1px solid #e5e7eb; font-size: 14px;">Order #${orderId}</td>
-              </tr>
-              <tr><td style="padding: 8px 14px; color: #6b7280; width: 40%;">Item</td><td style="padding: 8px 14px;">${tiffinTitle}</td></tr>
-              <tr><td style="padding: 8px 14px; color: #6b7280;">Type</td><td style="padding: 8px 14px;">${bookingType}</td></tr>
-              <tr><td style="padding: 8px 14px; color: #6b7280;">Quantity</td><td style="padding: 8px 14px;">${quantity}</td></tr>
-              <tr><td style="padding: 8px 14px; color: #6b7280;">Delivery</td><td style="padding: 8px 14px;">${deliveryDate} at ${slot}</td></tr>
-              ${selectedDays && selectedDays.length > 0 ? `
-              <tr><td style="padding: 8px 14px; color: #6b7280;">Selected Days</td><td style="padding: 8px 14px;">${selectedDays.join(', ')}</td></tr>
-              ` : ''}
-            </table>
-
-            <!-- Customer Info -->
-            <table style="width: 100%; border-collapse: collapse; margin-bottom: 20px; border: 1px solid #e5e7eb; border-radius: 4px; overflow: hidden;">
-              <tr style="background: #f9fafb;">
-                <td colspan="2" style="padding: 10px 14px; font-weight: bold; color: #111827; border-bottom: 1px solid #e5e7eb; font-size: 14px;">Customer Details</td>
-              </tr>
-              <tr><td style="padding: 8px 14px; color: #6b7280; width: 40%;">Name</td><td style="padding: 8px 14px;">${customerName}</td></tr>
-              <tr><td style="padding: 8px 14px; color: #6b7280;">Phone</td><td style="padding: 8px 14px;">${customerPhone}</td></tr>
-              <tr><td style="padding: 8px 14px; color: #6b7280;">Email</td><td style="padding: 8px 14px;">${customerEmail}</td></tr>
-              <tr><td style="padding: 8px 14px; color: #6b7280;">Address</td><td style="padding: 8px 14px;">${deliveryAddress}, ${customerCity}</td></tr>
-            </table>
-
-            ${addOns && addOns.length > 0 ? `
-            <table style="width: 100%; border-collapse: collapse; margin-bottom: 20px; border: 1px solid #e5e7eb; border-radius: 4px; overflow: hidden;">
-              <tr style="background: #f9fafb;">
-                <td colspan="2" style="padding: 10px 14px; font-weight: bold; color: #111827; border-bottom: 1px solid #e5e7eb; font-size: 14px;">Add-ons Requested</td>
-              </tr>
-              ${addOns.map((addOn: any) => `
-              <tr>
-                <td style="padding: 8px 14px; color: #374151;">${addOn.name} x ${addOn.quantity}</td>
-                <td style="padding: 8px 14px; text-align: right;">Rs. ${addOn.price * addOn.quantity}</td>
-              </tr>
-              `).join('')}
-            </table>
-            ` : ''}
-
-            ${weeklyCustomizations && weeklyCustomizations.length > 0 ? `
-            <table style="width: 100%; border-collapse: collapse; margin-bottom: 20px; border: 1px solid #e5e7eb; border-radius: 4px; overflow: hidden;">
-              <tr style="background: #f9fafb;">
-                <td colspan="2" style="padding: 10px 14px; font-weight: bold; color: #111827; border-bottom: 1px solid #e5e7eb; font-size: 14px;">Customizations Requested</td>
-              </tr>
-              ${weeklyCustomizations.map((custom: any) => {
-                const applicableDays = custom.days.filter((day: string) => selectedDays.includes(day));
-                const totalCost = custom.price * applicableDays.length;
-                return `
-                <tr>
-                  <td style="padding: 8px 14px; color: #374151;">
-                    <div><strong>${custom.name}</strong></div>
-                    <div style="font-size: 12px; color: #6b7280;">${custom.description} - Days: ${applicableDays.join(', ')}</div>
-                  </td>
-                  <td style="padding: 8px 14px; text-align: right; vertical-align: top;">Rs. ${totalCost}</td>
-                </tr>
-                `;
-              }).join('')}
-            </table>
-            ` : ''}
-
-            ${customization ? `
-            <div style="background: #f9fafb; padding: 14px; border-radius: 4px; border: 1px solid #e5e7eb; margin-bottom: 20px;">
-              <div style="font-weight: bold; color: #111827; margin-bottom: 4px; font-size: 13px;">Special Instructions</div>
-              <div style="color: #4b5563; font-style: italic; font-size: 14px;">"${customization}"</div>
-            </div>
-            ` : ''}
-
-            <!-- Price Breakdown for Seller -->
-            <table style="width: 100%; border-collapse: collapse; margin-bottom: 20px; border: 1px solid #e5e7eb; border-radius: 4px; overflow: hidden;">
-              <tr style="background: #f9fafb;">
-                <td colspan="2" style="padding: 10px 14px; font-weight: bold; color: #111827; border-bottom: 1px solid #e5e7eb; font-size: 14px;">Order Value</td>
-              </tr>
-              <tr><td style="padding: 8px 14px; color: #374151;">Base Price</td><td style="padding: 8px 14px; text-align: right;">Rs. ${basePrice}</td></tr>
-              ${addOnsTotal > 0 ? `<tr><td style="padding: 8px 14px; color: #374151;">Add-ons</td><td style="padding: 8px 14px; text-align: right;">+ Rs. ${addOnsTotal}</td></tr>` : ''}
-              ${customizationsTotal > 0 ? `<tr><td style="padding: 8px 14px; color: #374151;">Customizations</td><td style="padding: 8px 14px; text-align: right;">+ Rs. ${customizationsTotal}</td></tr>` : ''}
-              <tr><td style="padding: 8px 14px; font-weight: bold; border-top: 1px dashed #e5e7eb;">Subtotal</td><td style="padding: 8px 14px; text-align: right; font-weight: bold; border-top: 1px dashed #e5e7eb;">Rs. ${subtotal}</td></tr>
-              ${discountAmount > 0 ? `<tr><td style="padding: 8px 14px; color: #374151;">Customer Discount${couponCode ? ` (${couponCode})` : ''}</td><td style="padding: 8px 14px; text-align: right; color: #b91c1c;">- Rs. ${discountAmount}</td></tr>` : ''}
-              <tr>
-                <td style="padding: 12px 14px; font-weight: bold; font-size: 16px; border-top: 2px solid #111827;">Final Amount</td>
-                <td style="padding: 12px 14px; text-align: right; font-weight: bold; font-size: 16px; border-top: 2px solid #111827; color: #b91c1c;">Rs. ${totalPrice}</td>
-              </tr>
-            </table>
-
-            <!-- CTA Button -->
-            <div style="text-align: left; margin: 10px 0 0 0;">
-              <a href="${sellerDashboardLink}" style="background: #b91c1c; color: #ffffff; padding: 12px 24px; text-decoration: none; border-radius: 4px; font-weight: bold; display: inline-block; font-size: 14px;">
-                Manage Order in Dashboard
-              </a>
-            </div>
-          </div>
-
-          <!-- Footer -->
-          <div style="background: #f9fafb; padding: 16px 30px; text-align: left; color: #9ca3af; font-size: 12px; border-top: 1px solid #e5e7eb;">
-            <p style="margin: 0;">This is an automated message from Tiffo. Please do not reply directly to this email.</p>
-            <p style="margin: 4px 0 0 0;">&copy; ${new Date().getFullYear()} Tiffo. All rights reserved.</p>
-          </div>
+      subject: `New order #${orderId} — ${tiffinTitle} — Rs. ${totalPrice}`,
+      html: wrapEmail(`
+        <h2 style="color:#111827;margin:0 0 6px;font-size:18px;">New order received</h2>
+        <p style="color:#4b5563;margin:0 0 20px;">You have received a new order. Please review the details below and prepare accordingly.</p>
+        ${sectionTable(`Order #${orderId}`, orderRows)}
+        ${sectionTable('Customer Details', customerRows)}
+        ${addOnsHtml}
+        ${customizationsHtml}
+        ${customization ? `
+        <div style="background:#f9fafb;padding:14px;border-radius:4px;border:1px solid #e5e7eb;margin-bottom:16px;">
+          <div style="font-weight:bold;color:#111827;margin-bottom:4px;font-size:13px;">Special Instructions</div>
+          <div style="color:#4b5563;font-style:italic;font-size:13px;">"${customization}"</div>
+        </div>` : ''}
+        ${sectionTable('Order Value', valueRows)}
+        <div style="margin-top:8px;">
+          <a href="${sellerDashboardLink}" style="background:${ACCENT};color:#ffffff;padding:12px 24px;text-decoration:none;border-radius:4px;font-weight:bold;display:inline-block;font-size:14px;">
+            Manage Order in Dashboard
+          </a>
         </div>
-      `,
+      `),
     };
 
     const result = await transporter.sendMail(mailOptions);
@@ -631,12 +521,12 @@ export async function sendOrderNotificationToSeller(
   }
 }
 
-// ✅ UPDATED: Send order cancellation notification to seller WITH PHONE NUMBER
+// ✅ Send order cancellation notification to seller
 export async function sendOrderCancellationToSeller(
   sellerEmail: string,
   sellerName: string,
   customerName: string,
-  customerPhone: string, // ✅ PHONE NUMBER ADDED
+  customerPhone: string,
   tiffinTitle: string,
   orderId: string,
   orderTime: string,
@@ -647,66 +537,40 @@ export async function sendOrderCancellationToSeller(
     console.log(`📧 SENDING CANCELLATION NOTIFICATION TO SELLER: ${sellerEmail}`);
 
     const mailOptions = {
-      from: process.env.EMAIL_FROM || 'noreply@tiffo.com',
+      from: process.env.EMAIL_FROM || `noreply@tifoindia.com`,
       to: sellerEmail,
-      subject: `❌ Order Cancelled - ${tiffinTitle}`,
-      html: `
-        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; border: 2px solid #dc2626; border-radius: 10px; overflow: hidden;">
-          <div style="background: #dc2626; padding: 30px; text-align: center; color: white;">
-            <h1 style="margin: 0; font-size: 28px;">Tiffo</h1>
-            <p style="margin: 5px 0 0 0; opacity: 0.9;">Fresh Food Delivery</p>
-          </div>
-          
-          <div style="padding: 30px; background: white;">
-            <h2 style="color: #dc2626; margin-bottom: 20px; text-align: center;">Order Cancelled 😔</h2>
-            
-            <div style="background: #fef2f2; padding: 20px; border-radius: 8px; border: 1px solid #fecaca; margin: 20px 0;">
-              <h3 style="color: #dc2626; margin-top: 0; text-align: center;">Cancellation Details</h3>
-              <p><strong>Order ID:</strong> ${orderId}</p>
-              <p><strong>Tiffin:</strong> ${tiffinTitle}</p>
-              <p><strong>Customer Name:</strong> ${customerName}</p>
-              <p><strong>Customer Phone:</strong> ${customerPhone}</p> <!-- ✅ PHONE NUMBER ADDED -->
-              <p><strong>Order Time:</strong> ${orderTime}</p>
-              <p><strong>Cancellation Time:</strong> ${cancellationTime}</p>
-              <p><strong>Amount:</strong> ₹${totalAmount}</p>
-              <p><strong>Reason:</strong> Cancelled by user within 1-minute window</p>
-            </div>
-
-            <div style="background: #f0fdf4; padding: 15px; border-radius: 8px; border: 1px solid #bbf7d0; margin: 15px 0;">
-              <h4 style="color: #166534; margin-top: 0;">💡 Note</h4>
-              <p style="color: #166534; margin: 0;">
-                This order was automatically cancelled by the system as per customer request within the 1-minute cancellation period.
-                No action is required from your side.
-              </p>
-            </div>
-
-            <!-- ✅ CUSTOMER CONTACT INFO -->
-            <div style="background: #dbeafe; padding: 15px; border-radius: 8px; border: 1px solid #93c5fd; margin: 15px 0;">
-              <h4 style="color: #1e40af; margin-top: 0;">📞 Customer Contact Information</h4>
-              <p style="margin: 5px 0;"><strong>Name:</strong> ${customerName}</p>
-              <p style="margin: 5px 0;"><strong>Phone:</strong> ${customerPhone}</p>
-              <p style="margin: 5px 0; font-size: 12px; color: #4b5563;">
-                You can contact the customer if needed for any clarification.
-              </p>
-            </div>
-          </div>
-          
-          <div style="background: #dc2626; padding: 20px; text-align: center; color: white; font-size: 14px;">
-            <p style="margin: 0;">© ${new Date().getFullYear()} Tiffo. All rights reserved.</p>
-          </div>
+      subject: `Order cancelled — ${tiffinTitle}`,
+      html: wrapEmail(`
+        <h2 style="color:#111827;margin:0 0 6px;font-size:18px;">Order cancelled</h2>
+        <p style="color:#4b5563;margin:0 0 20px;">Hello ${sellerName}, the order below was cancelled by the customer.</p>
+        ${sectionTable('Cancellation Details', [
+          ['Order ID', orderId],
+          ['Tiffin', tiffinTitle],
+          ['Customer Name', customerName],
+          ['Customer Phone', customerPhone],
+          ['Order Time', orderTime],
+          ['Cancellation Time', cancellationTime],
+          ['Amount', `Rs. ${totalAmount}`],
+          ['Reason', 'Cancelled by customer within the 1-minute cancellation window'],
+        ])}
+        <div style="background:#f0fdf4;padding:14px;border-radius:4px;border:1px solid #bbf7d0;margin-bottom:16px;">
+          <p style="color:#166534;margin:0;font-size:13px;">
+            This order was automatically cancelled by the system as per customer request. No action is required from your side.
+          </p>
         </div>
-      `,
+        <p style="color:#6b7280;font-size:12px;margin:0;">You can contact the customer at ${customerPhone} if you need any clarification.</p>
+      `),
     };
 
     await transporter.sendMail(mailOptions);
     console.log(`✅ Cancellation notification sent to seller ${sellerEmail}`);
-    
+
   } catch (error: any) {
     console.error('❌ Email error:', error.message);
   }
 }
 
-// ✅ Send seller status update email - RED & WHITE THEME
+// ✅ Send seller status update email
 export async function sendSellerStatusUpdate(
   sellerEmail: string,
   sellerName: string,
@@ -715,66 +579,44 @@ export async function sendSellerStatusUpdate(
   try {
     const statusMessages: { [key: string]: { subject: string; message: string } } = {
       active: {
-        subject: '🎉 Your Tiffo Seller Account is Now Active!',
-        message: 'Congratulations! Your seller account has been approved and is now active. You can now start adding tiffins and receiving orders.'
+        subject: `Your ${BRAND_NAME} seller account is now active`,
+        message: 'Your seller account has been approved and is now active. You can start adding tiffins and receiving orders.'
       },
       suspended: {
-        subject: '⚠️ Your Tiffo Seller Account Has Been Suspended',
+        subject: `Your ${BRAND_NAME} seller account has been suspended`,
         message: 'Your seller account has been temporarily suspended. Please contact support for more information.'
       },
       pending: {
-        subject: '📋 Your Tiffo Seller Account is Under Review',
+        subject: `Your ${BRAND_NAME} seller account is under review`,
         message: 'Your seller account application is currently under review. We will notify you once it is approved.'
       }
     };
 
     const statusInfo = statusMessages[status] || {
-      subject: '📧 Update on Your Tiffo Seller Account',
+      subject: `Update on your ${BRAND_NAME} seller account`,
       message: `Your seller account status has been updated to: ${status}`
     };
 
     const mailOptions = {
-      from: process.env.EMAIL_FROM || 'noreply@tiffinservice.com',
+      from: process.env.EMAIL_FROM || `noreply@tifoindia.com`,
       to: sellerEmail,
       subject: statusInfo.subject,
-      html: `
-        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; border: 2px solid #dc2626; border-radius: 10px; overflow: hidden;">
-          <div style="background: #dc2626; padding: 30px; text-align: center; color: white;">
-            <h1 style="margin: 0; font-size: 28px;">Tiffo</h1>
-            <p style="margin: 5px 0 0 0; opacity: 0.9;">Fresh Food Delivery</p>
-          </div>
-          
-          <div style="padding: 30px; background: white;">
-            <h2 style="color: #dc2626; margin-bottom: 20px; text-align: center;">Account Status Update</h2>
-            
-            <p style="color: #4b5563; line-height: 1.6;">
-              Hello <strong>${sellerName}</strong>,
-            </p>
-            
-            <p style="color: #4b5563; line-height: 1.6;">
-              ${statusInfo.message}
-            </p>
-            
-            <div style="background: #fef2f2; padding: 20px; border-radius: 8px; border: 1px solid #fecaca; margin: 20px 0; text-align: center;">
-              <h3 style="color: #dc2626; margin-top: 0;">Current Status</h3>
-              <div style="font-size: 24px; font-weight: bold; color: #dc2626;">${status.toUpperCase()}</div>
-            </div>
-            
-            ${status === 'active' ? `
-            <div style="background: #f0fdf4; padding: 15px; border-radius: 8px; border: 1px solid #bbf7d0; margin: 15px 0;">
-              <h4 style="color: #166534; margin-top: 0;">Next Steps:</h4>
-              <p style="color: #166534; margin: 5px 0;">✅ Add your tiffin items</p>
-              <p style="color: #166534; margin: 5px 0;">✅ Set your available time slots</p>
-              <p style="color: #166534; margin: 5px 0;">✅ Start receiving orders!</p>
-            </div>
-            ` : ''}
-          </div>
-          
-          <div style="background: #dc2626; padding: 20px; text-align: center; color: white; font-size: 14px;">
-            <p style="margin: 0;">© ${new Date().getFullYear()} Tiffo. All rights reserved.</p>
-          </div>
+      html: wrapEmail(`
+        <h2 style="color:#111827;margin:0 0 12px;font-size:18px;">Account status update</h2>
+        <p style="color:#4b5563;margin:0;">Hello <strong>${sellerName}</strong>,</p>
+        <p style="color:#4b5563;margin:8px 0 20px;">${statusInfo.message}</p>
+        <div style="background:#fef2f2;padding:20px;border-radius:8px;border:1px solid #fecaca;margin-bottom:16px;text-align:center;">
+          <div style="color:#6b7280;font-size:12px;margin-bottom:4px;">Current Status</div>
+          <div style="font-size:20px;font-weight:bold;color:${ACCENT};">${status.toUpperCase()}</div>
         </div>
-      `,
+        ${status === 'active' ? `
+        <div style="background:#f0fdf4;padding:14px;border-radius:4px;border:1px solid #bbf7d0;">
+          <p style="color:#166534;margin:0 0 6px;font-size:13px;font-weight:bold;">Next steps</p>
+          <p style="color:#166534;margin:2px 0;font-size:13px;">Add your tiffin items</p>
+          <p style="color:#166534;margin:2px 0;font-size:13px;">Set your available time slots</p>
+          <p style="color:#166534;margin:2px 0;font-size:13px;">Start receiving orders</p>
+        </div>` : ''}
+      `),
     };
 
     await transporter.sendMail(mailOptions);
@@ -795,37 +637,17 @@ export async function sendOrderStatusUpdateToCustomer(
 ): Promise<void> {
   try {
     const mailOptions = {
-      from: `"Tiffo" <${process.env.EMAIL_FROM || 'noreply@tiffinservice.com'}>`,
+      from: `"${BRAND_NAME}" <${process.env.EMAIL_FROM || `noreply@tifoindia.com`}>`,
       to: customerEmail,
-      subject: `Order Update - #${orderId} is now ${status}`,
-      html: `
-        <div style="font-family: Arial, Helvetica, sans-serif; max-width: 600px; margin: 0 auto; border: 1px solid #e2e8f0; border-radius: 6px; overflow: hidden; color: #1f2937;">
-          <div style="background: #b91c1c; padding: 24px 30px; text-align: left;">
-            <h1 style="margin: 0; font-size: 22px; color: #ffffff; letter-spacing: 0.5px;">Tiffo</h1>
-            <p style="margin: 4px 0 0 0; color: #fecaca; font-size: 13px;">Fresh Food Delivery</p>
-          </div>
-
-          <div style="padding: 30px; background: #ffffff;">
-            <h2 style="color: #111827; margin: 0 0 6px 0; font-size: 19px;">Order status updated</h2>
-            <p style="color: #4b5563; line-height: 1.6; margin: 0 0 20px 0;">
-              Hello ${customerName}, there is an update on your order.
-            </p>
-
-            <table style="width: 100%; border-collapse: collapse; margin-bottom: 10px; border: 1px solid #e5e7eb; border-radius: 4px; overflow: hidden;">
-              <tr><td style="padding: 8px 14px; color: #6b7280; width: 40%;">Order</td><td style="padding: 8px 14px;">#${orderId} - ${tiffinTitle}</td></tr>
-              <tr>
-                <td style="padding: 8px 14px; color: #6b7280; border-top: 1px solid #e5e7eb;">Status</td>
-                <td style="padding: 8px 14px; font-weight: bold; border-top: 1px solid #e5e7eb; color: #b91c1c;">${status}</td>
-              </tr>
-            </table>
-          </div>
-
-          <div style="background: #f9fafb; padding: 16px 30px; text-align: left; color: #9ca3af; font-size: 12px; border-top: 1px solid #e5e7eb;">
-            <p style="margin: 0;">This is an automated message from Tiffo. Please do not reply directly to this email.</p>
-            <p style="margin: 4px 0 0 0;">&copy; ${new Date().getFullYear()} Tiffo. All rights reserved.</p>
-          </div>
-        </div>
-      `,
+      subject: `Order update — #${orderId} is now ${status}`,
+      html: wrapEmail(`
+        <h2 style="color:#111827;margin:0 0 6px;font-size:18px;">Order status updated</h2>
+        <p style="color:#4b5563;margin:0 0 16px;">Hello ${customerName}, there is an update on your order.</p>
+        ${sectionTable('Order', [
+          ['Order', `#${orderId} - ${tiffinTitle}`],
+          ['Status', status],
+        ])}
+      `),
     };
 
     await transporter.sendMail(mailOptions);
