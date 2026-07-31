@@ -65,7 +65,7 @@ export default function About() {
     {
       name: "Shashank Pandey",
       role: "Founder & CEO",
-      description: "Manages all operations of Tiffo and handles overall growth strategies & business development.",
+      description: "Manages all operations of Tiffo and handles overall growth strategies & business development at TIFOINDIA.",
       image: "https://image2url.com/images/1763915469075-3a182610-3895-46a8-85fc-737e975f2256.png",
       socials: [
         { icon: Linkedin, url: "https://linkedin.com/in/abhayrajput" },
@@ -73,13 +73,13 @@ export default function About() {
       ]
     },
     {
-      name: "Mohd. Hamza",
-      role: "Co-Founder",
-      description: "Handles marketing activities and manages seller reports & performance tracking.", 
+      name: "Mayank Gautam",
+      role: "Co-Founder and CTO",
+      description: "Building scalable food technology solutions and leading product innovation at TIFOINDIA.", 
       image: "https://image2url.com/images/1763915342857-b3b96900-f74c-4ab2-98eb-b735ac71cfb1.jpeg",
       socials: [
-        { icon: Linkedin, url: "https://linkedin.com/in/mohdhamza" },
-        { icon: Instagram, url: "https://instagram.com/mohdhamza" }
+        { icon: Linkedin, url: "https://www.linkedin.com/in/mayank-gautam-9140933aa?utm_source=share&utm_campaign=share_via&utm_content=profile&utm_medium=android_app" }
+        
       ]
     }
   ];
