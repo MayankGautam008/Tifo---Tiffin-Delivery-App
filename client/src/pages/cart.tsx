@@ -57,11 +57,9 @@ export default function CartPage() {
   // Calculate delivery fee and savings
   // ₹100 se kam order pe ₹10 delivery fee, warna free delivery
   const deliveryFee = items.length > 0 && totalAmount < 100 ? 10 : 0;
-  const platformFee = items.length > 0 ? 5 : 0;
-  const gst = Math.round(totalAmount * 0.05);
   const savings = Math.round(totalAmount * 0.15);
   const couponDiscount = appliedCoupon?.discountAmount || 0;
-  const grandTotal = Math.max(0, totalAmount + deliveryFee + platformFee + gst - couponDiscount);
+  const grandTotal = Math.max(0, totalAmount + deliveryFee - couponDiscount);
 
   const handlePlaceOrder = async () => {
     if (!isAuthenticated) {
@@ -341,18 +339,6 @@ export default function CartPage() {
                       <span className="text-gray-400 line-through text-xs mr-1">₹29</span>
                       <span className="font-semibold text-green-600">₹{deliveryFee}</span>
                     </div>
-                  </div>
-
-                  {/* Platform Fee */}
-                  <div className="flex justify-between items-center text-sm">
-                    <span className="text-gray-600">Platform Fee</span>
-                    <span className="font-semibold text-gray-800">₹{platformFee}</span>
-                  </div>
-
-                  {/* GST */}
-                  <div className="flex justify-between items-center text-sm">
-                    <span className="text-gray-600">GST (5%)</span>
-                    <span className="font-semibold text-gray-800">₹{gst}</span>
                   </div>
 
                   {/* Coupon Discount */}
