@@ -236,14 +236,15 @@ function calculateItemBasePricing(
 
   const subtotal = basePrice + addOnsPrice + weeklyCustomizationsPrice;
 
-  // Delivery charge — fixed server-side rule, not a client-supplied number.
-  // ₹100 se kam order pe ₹10 charge, warna free delivery.
-  const deliveryCharge = subtotal < 100 ? 10 : 0;
+  // ✅ Delivery charge is NOT decided per item anymore — a cart can have
+  // multiple items for the same seller, and the ₹100 threshold should look
+  // at the whole seller-order total, not each line individually. See the
+  // checkout loop below where sellerOrderSubtotal decides one delivery
+  // charge for the whole order.
 
   return {
     basePrice,
     addOnsPrice,
-    deliveryCharge,
     subtotal,
     validatedAddOns,
     validatedWeeklyCustomizations,
@@ -1654,10 +1655,20 @@ app.post("/api/orders/calculate-price", authenticateToken, async (req: AuthReque
           basePricings.map((p) => p.subtotal)
         );
 
+        // ✅ Delivery charge is decided ONCE per seller-order, on the
+        // combined total of every item in that order (not per item) —
+        // ₹10 if the whole order is below ₹100, otherwise free delivery.
+        // It's added on the first item only so the order's grand total
+        // (sum of every item's totalPrice) is correct and it isn't
+        // counted multiple times.
+        const sellerOrderSubtotal = basePricings.reduce((sum, p) => sum + p.subtotal, 0);
+        const sellerDeliveryCharge = sellerOrderSubtotal < 100 ? 10 : 0;
+
         sellerItems.forEach((item, i) => {
           const pricing = basePricings[i];
           const discountAmount = discountShares[i] || 0;
-          const totalPrice = Math.max(0, pricing.subtotal + pricing.deliveryCharge - discountAmount);
+          const itemDeliveryCharge = i === 0 ? sellerDeliveryCharge : 0;
+          const totalPrice = Math.max(0, pricing.subtotal + itemDeliveryCharge - discountAmount);
 
           bookingDocs.push({
             tiffinId: item.tiffinId,
@@ -1675,7 +1686,7 @@ app.post("/api/orders/calculate-price", authenticateToken, async (req: AuthReque
             bookingType: item.bookingType,
             basePrice: pricing.basePrice,
             addOnsPrice: pricing.addOnsPrice,
-            deliveryCharge: pricing.deliveryCharge,
+            deliveryCharge: itemDeliveryCharge,
             discountAmount,
             totalPrice,
             couponCode: discountAmount > 0 ? trimmedCouponCode : undefined,
