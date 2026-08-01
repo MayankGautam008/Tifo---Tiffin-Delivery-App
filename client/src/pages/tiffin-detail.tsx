@@ -44,28 +44,10 @@ const DAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"
 
 const PREDEFINED_OFFERS = [
   {
-    code: "FIRST100",
-    title: "Flat ₹44 Off on All Orders",
+    code: "SUPER10",
+    title: "Flat ₹10 Off on All Orders",
     subtitle: "Instant discount on minimum order value",
-    tag: "FLAT ₹44 OFF",
-  },
-  {
-    code: "FIRST200",
-    title: "10% Off on First Order",
-    subtitle: "Special welcome discount for new customers",
-    tag: "10% OFF",
-  },
-  {
-    code: "SAVE30",
-    title: "30% Off on First Order",
-    subtitle: "Enjoy a special discount as a limited-time reward",
-    tag: "30% OFF",
-  },
-  {
-    code: "FREEDEL",
-    title: "FREE Delivery on Your Order",
-    subtitle: "No delivery charges on your order",
-    tag: "FREE DELIVERY",
+    tag: "FLAT ₹10 OFF",
   },
 ] as const;
 
