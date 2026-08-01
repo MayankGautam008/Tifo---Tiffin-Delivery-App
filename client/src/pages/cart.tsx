@@ -55,7 +55,8 @@ export default function CartPage() {
   const [appliedCoupon, setAppliedCoupon] = useState<CouponValidation | null>(null);
 
   // Calculate delivery fee and savings
-  const deliveryFee = items.length > 0 ? 19 : 0;
+  // ₹100 se kam order pe ₹10 delivery fee, warna free delivery
+  const deliveryFee = items.length > 0 && totalAmount < 100 ? 10 : 0;
   const platformFee = items.length > 0 ? 5 : 0;
   const gst = Math.round(totalAmount * 0.05);
   const savings = Math.round(totalAmount * 0.15);
@@ -303,7 +304,7 @@ export default function CartPage() {
                 </div>
                 <div>
                   <p className="text-sm font-semibold text-green-800">Free Delivery Available!</p>
-                  <p className="text-xs text-green-600">Add ₹{Math.max(0, 199 - totalAmount)} more for free delivery</p>
+                  <p className="text-xs text-green-600">Add ₹{Math.max(0, 100 - totalAmount)} more for free delivery</p>
                 </div>
               </div>
             </div>
