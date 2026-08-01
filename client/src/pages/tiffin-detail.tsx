@@ -157,15 +157,9 @@ function getGoogleMapsUrl(address: string, city: string) {
   return `https://www.google.com/maps/search/?api=1&query=${query}`;
 }
 
-function calculateDeliveryCharge(serviceType: string, bookingType: BookingType): number {
-  if (serviceType === "meal") return 19;
-
-  if (serviceType === "tiffin") {
-    if (bookingType === "trial" || bookingType === "single") return 19;
-    return 0; // weekly / monthly: free delivery
-  }
-
-  return 19;
+function calculateDeliveryCharge(subtotal: number): number {
+  // Order ₹100 se kam ho tabhi ₹10 delivery charge, warna free delivery
+  return subtotal < 100 ? 10 : 0;
 }
 
 function currency(amount: number) {
@@ -671,7 +665,7 @@ export default function TiffinDetail() {
   );
 
   const subtotal = getBasePrice() + weeklyCustomizationsPrice + addOnsPrice;
-  const deliveryCharge = tiffin ? calculateDeliveryCharge(tiffin.serviceType, selectedBookingType) : 0;
+  const deliveryCharge = calculateDeliveryCharge(subtotal);
 
   const { appliedCoupon, applyCoupon, removeCoupon, isApplying } = useCoupon(subtotal);
 
