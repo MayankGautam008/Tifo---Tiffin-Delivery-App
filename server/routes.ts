@@ -234,15 +234,11 @@ function calculateItemBasePricing(
     weeklyCustomizationsPrice += catalogCustom.price * applicableDays.length;
   }
 
-  // Delivery charge — fixed server-side rule, not a client-supplied number.
-  const deliveryCharge =
-    tiffin.serviceType === "tiffin"
-      ? item.bookingType === "trial" || item.bookingType === "single"
-        ? 19
-        : 0
-      : 19;
-
   const subtotal = basePrice + addOnsPrice + weeklyCustomizationsPrice;
+
+  // Delivery charge — fixed server-side rule, not a client-supplied number.
+  // ₹100 se kam order pe ₹10 charge, warna free delivery.
+  const deliveryCharge = subtotal < 100 ? 10 : 0;
 
   return {
     basePrice,
@@ -1119,10 +1115,7 @@ app.post(
   // ✅ NEW: Calculate price route - FIXED VERSION
 app.post("/api/orders/calculate-price", authenticateToken, async (req: AuthRequest, res) => {
   try {
-    const { basePrice, addOns, weeklyCustomizations, deliveryCharge, couponCode } = req.body;
-
-    // QUICK FIX: Frontend se jo deliveryCharge aaya hai, wahi use karo
-    const finalDeliveryCharge = deliveryCharge || 0;
+    const { basePrice, addOns, weeklyCustomizations, couponCode } = req.body;
 
     // Calculate add-ons price
     const addOnsPrice = addOns?.reduce((total: number, addOn: any) => {
@@ -1136,6 +1129,9 @@ app.post("/api/orders/calculate-price", authenticateToken, async (req: AuthReque
 
     // Calculate subtotal (food items only - without delivery)
     const subtotal = basePrice + addOnsPrice + weeklyCustomizationPrice;
+
+    // ₹100 se kam order pe ₹10 delivery charge, warna free delivery
+    const finalDeliveryCharge = subtotal < 100 ? 10 : 0;
 
     // Calculate TOTAL AMOUNT before discount (including delivery)
     const totalBeforeDiscount = subtotal + finalDeliveryCharge;
