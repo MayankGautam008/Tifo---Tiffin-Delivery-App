@@ -92,11 +92,22 @@ interface TopRatedSeller {
   };
 }
 
-// Fallback images
+// Default/seed images shown for a meal or tiffin when the seller hasn't
+// uploaded their own photo yet.
+const DEFAULT_TIFFIN_IMAGE = "https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=200&h=200&fit=crop";
+
 const categoryImages: Record<string, string> = {
   Veg: "https://images.unsplash.com/photo-1546069901-ba9599a7e63c?auto=format&fit=crop&w=800&q=80",
   "Non-Veg": "https://images.unsplash.com/photo-1631515243349-e0cb75fb8d3a?auto=format&fit=crop&w=800&q=80",
+  Jain: "https://images.unsplash.com/photo-1546069901-ba9599a7e63c?auto=format&fit=crop&w=800&q=80",
+  Customizable: "https://images.unsplash.com/photo-1546069901-ba9599a7e63c?auto=format&fit=crop&w=800&q=80",
 };
+
+// A seller-uploaded photo always wins; otherwise fall back to the
+// category's seed image, and finally to one universal default so a tiffin
+// never shows up with a broken image.
+const getTiffinImage = (tiffin: { imageUrl?: string; category?: string }) =>
+  tiffin.imageUrl || categoryImages[tiffin.category || ""] || DEFAULT_TIFFIN_IMAGE;
 
 // Scroll animation component with 3D effect - Mobile Optimized
 const ScrollAnimation3D = ({ children, delay = 0, className = "" }: { children: React.ReactNode; delay?: number; className?: string }) => {
@@ -587,7 +598,7 @@ const TiffinOverlay = ({
                   <div key={tiffin._id} onClick={() => onTiffinClick(tiffin)} className="bg-white border border-gray-100 rounded-2xl p-4 shadow-sm hover:shadow-md transition-all cursor-pointer active:scale-[0.98]">
                     <div className="flex gap-4">
                       <div className="w-24 h-24 rounded-xl overflow-hidden flex-shrink-0 bg-gray-100">
-                        <img src={tiffin.imageUrl || categoryImages[tiffin.category] || "https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=200&h=200&fit=crop"} alt={tiffin.title} className="w-full h-full object-cover" />
+                        <img src={getTiffinImage(tiffin)} alt={tiffin.title} className="w-full h-full object-cover" />
                       </div>
                       <div className="flex-1 min-w-0">
                         <div className="flex items-start justify-between gap-2">
@@ -1347,7 +1358,7 @@ export default function Home() {
                     <Link key={tiffin._id} href={`/tiffin/${tiffin._id}`}>
                       <Card className="overflow-hidden border-0 shadow-lg hover:shadow-2xl transition-all duration-500 cursor-pointer group rounded-2xl transform hover:-translate-y-1">
                         <div className="relative h-48 sm:h-52 overflow-hidden">
-                          <img src={tiffin.imageUrl || categoryImages[tiffin.category]} alt={tiffin.title} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
+                          <img src={getTiffinImage(tiffin)} alt={tiffin.title} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
                           <div className="absolute top-3 left-3 flex flex-col items-start gap-2">
                             <div className="bg-blue-500 text-white px-3 py-1 rounded-full text-xs font-semibold shadow-lg">🍛 Meal</div>
                           </div>
@@ -1398,7 +1409,7 @@ export default function Home() {
                   <Link key={tiffin._id} href={`/tiffin/${tiffin._id}`}>
                     <Card className="overflow-hidden border-0 shadow-lg rounded-2xl group hover:shadow-2xl transition-all duration-500 cursor-pointer transform hover:-translate-y-1">
                       <div className="relative h-48 sm:h-52 overflow-hidden">
-                        <img src={tiffin.imageUrl || categoryImages[tiffin.category]} alt={tiffin.title} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
+                        <img src={getTiffinImage(tiffin)} alt={tiffin.title} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
                         <div className="absolute top-3 left-3 flex flex-col items-start gap-2">
                           <div className="bg-blue-500 text-white px-3 py-1 rounded-full text-xs font-semibold shadow-lg">🍛 Meal</div>
                           <div className="bg-emerald-600 text-white px-3 py-1 rounded-full text-xs font-semibold shadow-lg">⚡ Instant Delivery</div>
@@ -1482,7 +1493,7 @@ export default function Home() {
                       <Link key={tiffin._id} href={`/tiffin/${tiffin._id}`}>
                         <Card className="overflow-hidden border-0 shadow-lg hover:shadow-2xl transition-all duration-500 cursor-pointer group rounded-2xl transform hover:-translate-y-1 border-2 border-yellow-200">
                           <div className="relative h-48 sm:h-52 overflow-hidden">
-                            <img src={tiffin.imageUrl || categoryImages[tiffin.category]} alt={tiffin.title} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
+                            <img src={getTiffinImage(tiffin)} alt={tiffin.title} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
                             <div className="absolute top-3 left-3 flex flex-col items-start gap-2">
                               <div className="bg-blue-500 text-white px-3 py-1 rounded-full text-xs font-semibold shadow-lg">🍛 Meal</div>
                               <div className="bg-emerald-600 text-white px-3 py-1 rounded-full text-xs font-semibold shadow-lg">⚡ Instant Delivery</div>
