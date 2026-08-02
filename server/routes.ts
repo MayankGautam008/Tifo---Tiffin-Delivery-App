@@ -1,10 +1,13 @@
 import type { Express , Response , Request  } from "express";
+import express from "express";
+import path from "path";
 import { createServer, type Server } from "http";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import { body, validationResult } from "express-validator";
 import { storage } from "./storage";
 import { authenticateToken, requireRole, type AuthRequest } from "./middleware/auth";
+import { handleTiffinImageUpload, deleteUploadedTiffinImage } from "./middleware/upload";
 import {
   sendBookingConfirmationToCustomer,
   sendOrderNotificationToSeller,
@@ -541,7 +544,11 @@ const registerTopRatedRoutes = (app: Express) => {
 };
 
 export async function registerRoutes(app: Express): Promise<Server> {
-  
+
+  // ✅ Serve seller-uploaded tiffin/meal images (gallery/file uploads only —
+  // sellers never paste an external link for these).
+  app.use("/uploads", express.static(path.join(process.cwd(), "uploads")));
+
   // ✅ Register top rated routes
   registerTopRatedRoutes(app);
 
@@ -1918,6 +1925,34 @@ app.get("/api/seller/profile", authenticateToken, async (req: AuthRequest, res) 
     }
   });
 
+  // ✅ Seller image upload for a meal/tiffin — accepts a gallery/file upload
+  // only (multipart/form-data, field name "image"). No image URL / link
+  // input is exposed anywhere on the client for this.
+  app.post(
+    "/api/seller/tiffins/upload-image",
+    authenticateToken,
+    requireRole("seller"),
+    handleTiffinImageUpload,
+    async (req: AuthRequest, res) => {
+      try {
+        const seller = await storage.getSellerByUserId(req.userId!);
+        if (!seller) {
+          return res.status(404).json({ message: "Seller not found" });
+        }
+
+        if (!req.file) {
+          return res.status(400).json({ message: "No image file uploaded" });
+        }
+
+        const imageUrl = `/uploads/tiffins/${req.file.filename}`;
+        res.status(201).json({ imageUrl });
+      } catch (error: any) {
+        console.error("❌ Error uploading tiffin image:", error);
+        res.status(500).json({ message: error.message });
+      }
+    }
+  );
+
   // Tiffin creation - FIXED VERSION
 app.post("/api/seller/tiffins", authenticateToken, requireRole("seller"), async (req: AuthRequest, res) => {
   try {
@@ -2022,7 +2057,17 @@ app.put("/api/seller/tiffins/:id", authenticateToken, requireRole("seller"), asy
     if (!updated) {
       return res.status(404).json({ message: "Failed to update tiffin" });
     }
-    
+
+    // ✅ If the seller replaced/removed the photo, delete the old uploaded
+    // file from disk so images don't pile up unused.
+    if (
+      Object.prototype.hasOwnProperty.call(req.body, "imageUrl") &&
+      tiffin.imageUrl &&
+      tiffin.imageUrl !== req.body.imageUrl
+    ) {
+      deleteUploadedTiffinImage(tiffin.imageUrl);
+    }
+
     res.json(updated);
   } catch (error: any) {
     console.error("❌ Error updating tiffin:", error);
@@ -2051,7 +2096,9 @@ app.put("/api/seller/tiffins/:id", authenticateToken, requireRole("seller"), asy
       if (!deleted) {
         return res.status(404).json({ message: "Failed to delete tiffin" });
       }
-      
+
+      deleteUploadedTiffinImage(tiffin.imageUrl);
+
       res.json({ message: "Tiffin deleted successfully" });
     } catch (error: any) {
       console.error("❌ Error deleting tiffin:", error);
