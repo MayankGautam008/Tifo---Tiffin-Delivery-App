@@ -59,6 +59,8 @@ import {
   ChevronRight,
   LogOut,
   NotebookPen,
+  Upload,
+  Image as ImageIcon,
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -1096,6 +1098,7 @@ export default function SellerDashboard() {
       price: 0,
       availableDays: [],
       slots: [],
+      imageUrl: "",
       serviceType: "meal",
       mealType: "Lunch",
       trialPrice: 99,
@@ -1105,6 +1108,61 @@ export default function SellerDashboard() {
       weeklyCustomizations: [],
     },
   });
+
+  const [isUploadingImage, setIsUploadingImage] = useState(false);
+
+  const handleImageFileChange = async (
+    e: React.ChangeEvent<HTMLInputElement>,
+    onChange: (url: string) => void
+  ) => {
+    const file = e.target.files?.[0];
+    e.target.value = ""; // allow re-selecting the same file again later
+
+    if (!file) return;
+
+    const allowedTypes = ["image/jpeg", "image/png", "image/webp", "image/gif"];
+    if (!allowedTypes.includes(file.type)) {
+      toast({ title: "Error", description: "Only JPG, PNG, WEBP or GIF images are allowed", variant: "destructive" });
+      return;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      toast({ title: "Error", description: "Image must be under 5MB", variant: "destructive" });
+      return;
+    }
+
+    setIsUploadingImage(true);
+    try {
+      const token = localStorage.getItem("token");
+      const formData = new FormData();
+      formData.append("image", file);
+
+      const res = await fetch("/api/seller/tiffins/upload-image", {
+        method: "POST",
+        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+        body: formData,
+        credentials: "include",
+      });
+
+      if (!res.ok) {
+        const text = await res.text();
+        let message = text;
+        try {
+          const parsed = JSON.parse(text);
+          message = parsed?.message || text;
+        } catch {
+          // not JSON, keep raw text
+        }
+        throw new Error(message || "Upload failed");
+      }
+
+      const data = await res.json();
+      onChange(data.imageUrl);
+    } catch (error: any) {
+      toast({ title: "Error", description: error.message || "Failed to upload image", variant: "destructive" });
+    } finally {
+      setIsUploadingImage(false);
+    }
+  };
 
   const selectedDays = form.watch("availableDays");
   const selectedSlots = form.watch("slots");
@@ -1242,6 +1300,7 @@ export default function SellerDashboard() {
         price: data.price,
         availableDays: data.availableDays,
         slots: data.slots,
+        imageUrl: data.imageUrl || "",
         serviceType: data.serviceType,
         weeklyCustomizations: weeklyCustomizations,
         ...(data.serviceType === "meal" && { mealType: data.mealType }),
@@ -1275,6 +1334,7 @@ export default function SellerDashboard() {
         price: data.price,
         availableDays: data.availableDays,
         slots: data.slots,
+        imageUrl: data.imageUrl || "",
         serviceType: data.serviceType,
         weeklyCustomizations: weeklyCustomizations,
         ...(data.serviceType === "meal" && { mealType: data.mealType }),
@@ -1410,6 +1470,7 @@ export default function SellerDashboard() {
       price: tiffin.price,
       availableDays: tiffin.availableDays,
       slots: tiffin.slots,
+      imageUrl: tiffin.imageUrl || "",
       serviceType: tiffin.serviceType || "meal",
       mealType: tiffin.mealType || "Lunch",
       trialPrice: tiffin.trialPrice || 99,
@@ -1734,6 +1795,7 @@ export default function SellerDashboard() {
                     price: 0,
                     availableDays: [],
                     slots: [],
+                    imageUrl: "",
                     serviceType: "meal",
                     mealType: "Lunch",
                     trialPrice: 99,
@@ -1871,6 +1933,67 @@ export default function SellerDashboard() {
           </DialogHeader>
           <Form {...form}>
             <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+              <FormField
+                control={form.control}
+                name="imageUrl"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>{currentServiceType === "meal" ? "Meal photo" : "Tiffin photo"}</FormLabel>
+                    <FormControl>
+                      <div>
+                        {field.value ? (
+                          <div className="relative w-full h-40 rounded-lg overflow-hidden border border-card-border bg-muted">
+                            <img src={field.value} alt="Preview" className="w-full h-full object-cover" />
+                            <button
+                              type="button"
+                              onClick={() => field.onChange("")}
+                              className="absolute top-2 right-2 bg-black/60 hover:bg-black/80 text-white rounded-full p-1.5"
+                              title="Remove photo"
+                            >
+                              <X className="w-4 h-4" />
+                            </button>
+                          </div>
+                        ) : (
+                          <label
+                            htmlFor="tiffin-image-upload"
+                            className={`flex flex-col items-center justify-center gap-2 w-full h-40 rounded-lg border-2 border-dashed border-card-border cursor-pointer hover:bg-muted/50 transition-colors ${
+                              isUploadingImage ? "opacity-60 pointer-events-none" : ""
+                            }`}
+                          >
+                            {isUploadingImage ? (
+                              <>
+                                <RefreshCw className="w-6 h-6 animate-spin text-muted-foreground" />
+                                <span className="text-sm text-muted-foreground">Uploading...</span>
+                              </>
+                            ) : (
+                              <>
+                                <Upload className="w-6 h-6 text-muted-foreground" />
+                                <span className="text-sm text-muted-foreground">Tap to upload from gallery / files</span>
+                                <span className="text-xs text-muted-foreground">JPG, PNG, WEBP or GIF — max 5MB</span>
+                              </>
+                            )}
+                          </label>
+                        )}
+                        <input
+                          id="tiffin-image-upload"
+                          type="file"
+                          accept="image/jpeg,image/png,image/webp,image/gif"
+                          className="hidden"
+                          onChange={(e) => handleImageFileChange(e, field.onChange)}
+                          disabled={isUploadingImage}
+                        />
+                        {!field.value && (
+                          <p className="text-xs text-muted-foreground mt-1.5">
+                            No photo? We'll show a default image to customers instead.
+                          </p>
+                        )}
+                      </div>
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
               <FormField
                 control={form.control}
                 name="serviceType"
@@ -2499,6 +2622,16 @@ function ServiceRow({
 }) {
   return (
     <div className="flex flex-col sm:flex-row sm:items-center justify-between p-3.5 md:p-4 border border-card-border rounded-lg hover:shadow-sm transition-shadow gap-3">
+      <div className="flex gap-3 flex-1 min-w-0">
+        <div className="w-16 h-16 rounded-lg overflow-hidden flex-shrink-0 bg-muted">
+          {tiffin.imageUrl ? (
+            <img src={tiffin.imageUrl} alt={tiffin.title} className="w-full h-full object-cover" />
+          ) : (
+            <div className="w-full h-full flex items-center justify-center">
+              <ImageIcon className="w-6 h-6 text-muted-foreground" />
+            </div>
+          )}
+        </div>
       <div className="flex-1 min-w-0">
         <div className="flex flex-wrap items-center gap-2 mb-1.5">
           <h3 className="font-semibold text-sm md:text-base truncate">{tiffin.title}</h3>
@@ -2534,6 +2667,7 @@ function ServiceRow({
             </Badge>
           )}
         </div>
+      </div>
       </div>
       <div className="flex items-center gap-1.5 self-end sm:self-auto">
         <Button variant="ghost" size="icon" onClick={onManageAddOns} disabled={isSuspended} title="Manage add-ons" className="h-9 w-9">
