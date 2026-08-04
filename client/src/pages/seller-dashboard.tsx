@@ -69,6 +69,8 @@ import {
   DropdownMenuTrigger,
   DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu";
+import { useSellerNotifications } from "@/hooks/use-seller-notifications";
+import { SellerNotificationBell } from "@/components/seller-notification-bell";
 
 const DAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
 const TIME_SLOTS = [
@@ -767,10 +769,12 @@ function SingleOrderCard({
   booking,
   onView,
   onStatusUpdate,
+  isNew,
 }: {
   booking: BookingWithDetails;
   onView: () => void;
   onStatusUpdate: (id: string, status: string) => void;
+  isNew?: boolean;
 }) {
   const tiffin = booking.tiffin || {
     title: "Service not available",
@@ -780,7 +784,7 @@ function SingleOrderCard({
   };
 
   return (
-    <div className="border border-card-border rounded-lg p-3.5 md:p-4 hover:shadow-sm transition-shadow">
+    <div className={`border border-card-border rounded-lg p-3.5 md:p-4 hover:shadow-sm transition-shadow ${isNew ? "animate-order-glow" : ""}`}>
       <div className="flex flex-col gap-3">
         <div className="flex items-start justify-between gap-2">
           <div className="min-w-0">
@@ -789,6 +793,11 @@ function SingleOrderCard({
               <Badge variant="outline" className="capitalize text-xs">
                 {booking.bookingType}
               </Badge>
+              {isNew && (
+                <Badge className="bg-orange-500 hover:bg-orange-500 text-white text-[10px] px-1.5 py-0 h-4 animate-pulse">
+                  New
+                </Badge>
+              )}
             </div>
             <div className="flex items-center gap-3 text-xs text-muted-foreground flex-wrap">
               <span className="flex items-center gap-1">
@@ -888,10 +897,12 @@ function GroupOrderCard({
   group,
   onView,
   onGroupStatusUpdate,
+  isNew,
 }: {
   group: OrderGroup;
   onView: (b: BookingWithDetails) => void;
   onGroupStatusUpdate: (ids: string[], status: string) => void;
+  isNew?: boolean;
 }) {
   const primary = group.bookings[0];
   const groupTotal = group.bookings.reduce((sum, b) => sum + (b.totalPrice || 0), 0);
@@ -901,7 +912,7 @@ function GroupOrderCard({
   const confirmedIds = group.bookings.filter((b) => b.status === "Confirmed").map((b) => b._id);
 
   return (
-    <div className="border border-card-border rounded-lg p-3.5 md:p-4 hover:shadow-sm transition-shadow">
+    <div className={`border border-card-border rounded-lg p-3.5 md:p-4 hover:shadow-sm transition-shadow ${isNew ? "animate-order-glow" : ""}`}>
       <div className="flex flex-col gap-3">
         <div className="flex items-start justify-between gap-2">
           <div className="flex items-center gap-2 flex-wrap min-w-0">
@@ -912,6 +923,11 @@ function GroupOrderCard({
             <Badge variant="outline" className="text-xs">
               {group.bookings.length} items
             </Badge>
+            {isNew && (
+              <Badge className="bg-orange-500 hover:bg-orange-500 text-white text-[10px] px-1.5 py-0 h-4 animate-pulse">
+                New
+              </Badge>
+            )}
           </div>
           <StatusBadge status={groupStatus} />
         </div>
@@ -996,6 +1012,16 @@ export default function SellerDashboard() {
   const { isAuthenticated, isSeller, seller, user, logout } = useAuth();
   const [, setLocation] = useLocation();
   const { toast } = useToast();
+
+  // ✅ Real-time seller order notification system
+  const {
+    unreadCount: notifUnreadCount,
+    newOrderIds,
+    notifications: orderNotifications,
+    acknowledgeOrder,
+    markAllRead: markAllNotificationsRead,
+    clearProcessed: clearProcessedNotifications,
+  } = useSellerNotifications();
 
   const [activeTab, setActiveTab] = useState("overview");
   const [orderFilter, setOrderFilter] = useState<OrderStatusFilter>("All");
@@ -1433,10 +1459,20 @@ export default function SellerDashboard() {
 
   const handleStatusUpdate = (bookingId: string, newStatus: string) => {
     updateBookingStatusMutation.mutate({ bookingId, status: newStatus });
+    // ✅ Acknowledge the order in the notification system to stop reminders
+    if (newStatus === "Confirmed" || newStatus === "Cancelled") {
+      acknowledgeOrder(bookingId);
+    }
   };
 
   const handleGroupStatusUpdate = (bookingIds: string[], newStatus: string) => {
-    bookingIds.forEach((bookingId) => updateBookingStatusMutation.mutate({ bookingId, status: newStatus }));
+    bookingIds.forEach((bookingId) => {
+      updateBookingStatusMutation.mutate({ bookingId, status: newStatus });
+      // ✅ Acknowledge each order in the notification system
+      if (newStatus === "Confirmed" || newStatus === "Cancelled") {
+        acknowledgeOrder(bookingId);
+      }
+    });
   };
 
   const onSubmit = (data: InsertTiffin) => {
@@ -1546,6 +1582,11 @@ export default function SellerDashboard() {
                 </div>
               </div>
               <div className="flex items-center gap-2 shrink-0">
+                <SellerNotificationBell
+                  unreadCount={notifUnreadCount}
+                  notifications={orderNotifications}
+                  onMarkAllRead={markAllNotificationsRead}
+                />
                 <Button onClick={goHome} variant="outline" size="sm" className="h-9 border-border/80">
                   <ArrowLeft className="w-4 h-4 sm:mr-1.5" />
                   <span className="hidden sm:inline">Back</span>
@@ -1690,13 +1731,18 @@ export default function SellerDashboard() {
                 ) : groupedOrders.length === 0 ? (
                   <p className="text-sm text-muted-foreground text-center py-6">No orders yet.</p>
                 ) : (
-                  groupedOrders.slice(0, 3).map((group) =>
-                    group.bookings.length > 1 ? (
+                  groupedOrders.slice(0, 3).map((group) => {
+                    const isGroupNew = group.cartOrderId
+                      ? newOrderIds.has(group.cartOrderId)
+                      : group.bookings.some(b => newOrderIds.has(b._id));
+                    
+                    return group.bookings.length > 1 ? (
                       <GroupOrderCard
                         key={group.key}
                         group={group}
                         onView={setSelectedOrder}
                         onGroupStatusUpdate={handleGroupStatusUpdate}
+                        isNew={isGroupNew}
                       />
                     ) : (
                       <SingleOrderCard
@@ -1704,9 +1750,10 @@ export default function SellerDashboard() {
                         booking={group.bookings[0]}
                         onView={() => setSelectedOrder(group.bookings[0])}
                         onStatusUpdate={handleStatusUpdate}
+                        isNew={isGroupNew}
                       />
                     )
-                  )
+                  })
                 )}
                 {groupedOrders.length > 3 && (
                   <Button variant="outline" className="w-full" onClick={() => setActiveTab("orders")}>
@@ -1751,13 +1798,18 @@ export default function SellerDashboard() {
               </div>
             ) : (
               <div className="space-y-3">
-                {filteredOrders.map((group) =>
-                  group.bookings.length > 1 ? (
+                {filteredOrders.map((group) => {
+                  const isGroupNew = group.cartOrderId
+                    ? newOrderIds.has(group.cartOrderId)
+                    : group.bookings.some(b => newOrderIds.has(b._id));
+
+                  return group.bookings.length > 1 ? (
                     <GroupOrderCard
                       key={group.key}
                       group={group}
                       onView={setSelectedOrder}
                       onGroupStatusUpdate={handleGroupStatusUpdate}
+                      isNew={isGroupNew}
                     />
                   ) : (
                     <SingleOrderCard
@@ -1765,9 +1817,10 @@ export default function SellerDashboard() {
                       booking={group.bookings[0]}
                       onView={() => setSelectedOrder(group.bookings[0])}
                       onStatusUpdate={handleStatusUpdate}
+                      isNew={isGroupNew}
                     />
                   )
-                )}
+                })}
               </div>
             )}
           </TabsContent>

@@ -8,6 +8,13 @@ import { storage } from "./storage";
 // the realtime wiring stays in one place.
 let io: SocketIOServer | null = null;
 
+// ✅ In-memory pending notification queue for offline sellers.
+// When a seller is disconnected, new-order events are stored here and
+// delivered in bulk the moment they reconnect. Ephemeral by design —
+// a server restart clears it, but the REST /api/seller/bookings endpoint
+// already returns all orders on page load, so no data is truly lost.
+const pendingNotifications = new Map<string, unknown[]>();
+
 function getJWTSecret(): string {
   const secret = process.env.JWT_SECRET;
   if (!secret) {
@@ -76,7 +83,39 @@ export function initSocket(httpServer: HTTPServer): SocketIOServer {
       try {
         const seller = await storage.getSellerByUserId(userId);
         if (seller) {
-          socket.join(`seller:${seller._id}`);
+          const sellerId = String(seller._id);
+          socket.join(`seller:${sellerId}`);
+
+          // ✅ Deliver any pending notifications that arrived while the
+          // seller was offline, then clear the queue.
+          const pending = pendingNotifications.get(sellerId);
+          if (pending && pending.length > 0) {
+            socket.emit("order:pending-sync", pending);
+            pendingNotifications.delete(sellerId);
+            if (process.env.NODE_ENV !== "production") {
+              console.log(`📬 Delivered ${pending.length} pending notification(s) to seller ${sellerId}`);
+            }
+          }
+
+          // ✅ Listen for acknowledgements from the seller client so we
+          // can clean up any leftover pending entries.
+          socket.on("order:acknowledged", (data: { orderId?: string }) => {
+            if (!data?.orderId) return;
+            const q = pendingNotifications.get(sellerId);
+            if (q) {
+              const filtered = q.filter(
+                (item: any) =>
+                  item?._id !== data.orderId &&
+                  item?.cartOrderId !== data.orderId &&
+                  item?.orderId !== data.orderId
+              );
+              if (filtered.length === 0) {
+                pendingNotifications.delete(sellerId);
+              } else {
+                pendingNotifications.set(sellerId, filtered);
+              }
+            }
+          });
         }
       } catch (error) {
         console.error("❌ Socket: failed to resolve seller for room join:", error);
@@ -94,7 +133,23 @@ export function getIO(): SocketIOServer | null {
 
 /** Pushes a brand-new order to the seller who owns it (Seller Dashboard). */
 export function emitNewOrderToSeller(sellerId: string, booking: unknown) {
-  io?.to(`seller:${sellerId}`).emit("order:new", booking);
+  if (!io) return;
+
+  const room = io.sockets.adapter.rooms.get(`seller:${sellerId}`);
+  const isOnline = room && room.size > 0;
+
+  if (isOnline) {
+    // Seller has at least one connected socket — deliver instantly.
+    io.to(`seller:${sellerId}`).emit("order:new", booking);
+  } else {
+    // Seller is offline — store for delivery on reconnect.
+    const queue = pendingNotifications.get(sellerId) || [];
+    queue.push(booking);
+    pendingNotifications.set(sellerId, queue);
+    if (process.env.NODE_ENV !== "production") {
+      console.log(`📥 Seller ${sellerId} offline — queued notification (${queue.length} pending)`);
+    }
+  }
 }
 
 /** Pushes an order/status change to the customer who placed it (Customer Dashboard). */

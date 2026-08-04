@@ -46,6 +46,13 @@ export function useRealtimeOrders() {
       invalidateByPrefix(["/api/seller/bookings", "/api/seller/subscriptions"]);
     };
 
+    // ✅ Pending sync — delivered in bulk after seller reconnects. Same
+    // cache-invalidation as a single order:new, just triggered once for
+    // the whole batch so we don't needlessly hammer React Query.
+    const handlePendingSync = () => {
+      invalidateByPrefix(["/api/seller/bookings", "/api/seller/subscriptions"]);
+    };
+
     // Order status changed (by the seller) → Customer Dashboard should
     // reflect it right away, including the per-subscription schedule view.
     const handleStatusUpdated = () => {
@@ -59,6 +66,7 @@ export function useRealtimeOrders() {
     };
 
     socket.on("order:new", handleNewOrder);
+    socket.on("order:pending-sync", handlePendingSync);
     socket.on("order:status-updated", handleStatusUpdated);
     socket.on("order:updated", handleOrderUpdated);
 
@@ -68,6 +76,7 @@ export function useRealtimeOrders() {
 
     return () => {
       socket.off("order:new", handleNewOrder);
+      socket.off("order:pending-sync", handlePendingSync);
       socket.off("order:status-updated", handleStatusUpdated);
       socket.off("order:updated", handleOrderUpdated);
     };

@@ -342,3 +342,23 @@
 .hide-scrollbar::-webkit-scrollbar {
   display: none;
 }
+
+/* ------------------------------------------------------------------ */
+/* Seller Dashboard — New Order Glow & Bell Wiggle Animations         */
+/* ------------------------------------------------------------------ */
+@keyframes order-glow {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(249, 115, 22, 0); }
+  50% { box-shadow: 0 0 12px 4px rgba(249, 115, 22, 0.35); }
+}
+.animate-order-glow {
+  animation: order-glow 1.5s ease-in-out 3;
+}
+
+@keyframes wiggle {
+  0%, 100% { transform: rotate(0deg); }
+  15% { transform: rotate(14deg); }
+  30% { transform: rotate(-10deg); }
+  45% { transform: rotate(8deg); }
+  60% { transform: rotate(-6deg); }
+  75% { transform: rotate(3deg); }
+}
