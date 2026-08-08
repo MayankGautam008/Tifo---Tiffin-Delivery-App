@@ -133,8 +133,8 @@ const TiffinSchema = new Schema<ITiffin>(
   { timestamps: true }
 );
 
-// ✅ PERFORMANCE: sellerId is filtered on every seller dashboard load and
-// every checkout item lookup groups by it.
+// ✅ PERFORMANCE: sellerId and createdAt indexes for fast queries without 32MB in-memory sort limits
 TiffinSchema.index({ sellerId: 1, createdAt: -1 });
+TiffinSchema.index({ createdAt: -1 });
 
 export const Tiffin = mongoose.model<ITiffin>("Tiffin", TiffinSchema);

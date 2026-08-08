@@ -309,24 +309,28 @@ async updateSeller(sellerId: string, updateData: Partial<SharedSeller>): Promise
   }
 
   async getAllTiffins(): Promise<SharedTiffin[]> {
-    const tiffins = await Tiffin.find().sort({ createdAt: -1 }).lean();
+    const tiffins = await Tiffin.find().lean();
+    tiffins.sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
     return tiffins.map(tiffin => toObject<SharedTiffin>(tiffin));
   }
 
   async getTiffinsBySellerId(sellerId: string): Promise<SharedTiffin[]> {
     if (!mongoose.Types.ObjectId.isValid(sellerId)) return [];
-    const tiffins = await Tiffin.find({ sellerId }).sort({ createdAt: -1 }).lean();
+    const tiffins = await Tiffin.find({ sellerId }).lean();
+    tiffins.sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
     return tiffins.map(tiffin => toObject<SharedTiffin>(tiffin));
   }
 
   async getTiffinsWithActiveSellers(): Promise<TiffinWithSeller[]> {
-    const tiffins = await Tiffin.find()
-      .populate({
-        path: 'sellerId',
-        match: { status: 'active' }
-      })
-      .sort({ createdAt: -1 })
+    const activeSellers = await Seller.find({ status: 'active' }).lean();
+    if (!activeSellers || activeSellers.length === 0) return [];
+
+    const activeSellerIds = activeSellers.map(s => s._id);
+    const tiffins = await Tiffin.find({ sellerId: { $in: activeSellerIds } })
+      .populate('sellerId')
       .lean();
+    
+    tiffins.sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
     
     return tiffins
       .filter(tiffin => (tiffin as any).sellerId !== null)
