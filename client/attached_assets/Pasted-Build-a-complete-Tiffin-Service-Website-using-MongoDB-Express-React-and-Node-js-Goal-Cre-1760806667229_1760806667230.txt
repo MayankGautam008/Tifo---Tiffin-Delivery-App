@@ -1,0 +1,135 @@
+Build a complete Tiffin Service Website using MongoDB, Express, React, and Node.js.
+
+💡 Goal:
+Create a 3-role web app (Admin, Seller, Customer) where:
+- Sellers can register and list their tiffins.
+- Customers can browse and book tiffins.
+- Admin can manage and control all sellers and bookings.
+
+🧠 Requirements:
+Use MongoDB + Mongoose for database.
+Use JWT authentication.
+Use Nodemailer for email notifications.
+All panels must be mobile responsive and clean (Tailwind or Bootstrap UI).
+
+---
+
+👤 USER ROLES
+
+1️⃣ **Admin Panel**
+- Secure login for admin.
+- View all registered sellers.
+- Approve, Suspend, or Reactivate seller accounts.
+- View all bookings from customers.
+- Manage and delete any tiffin listings.
+- Simple dashboard showing total sellers, total tiffins, and total bookings.
+
+2️⃣ **Seller Panel**
+- Register/Login as Seller.
+- Add, edit, or delete tiffin listings with fields:
+  - Title
+  - Description
+  - Category (Veg/Non-Veg/Jain)
+  - Price
+  - Delivery Time Slots
+  - Available Days
+  - Contact Number
+  - Shop Location
+- View all their bookings.
+- Update their profile info (shop name, address, etc.)
+- Status message visible if account is suspended (cannot add tiffins until active).
+
+3️⃣ **Customer Side**
+- Register/Login.
+- Browse all approved sellers and their tiffin menus.
+- Filter by location, category, and price.
+- View tiffin details and book one with:
+  - Name, Email, Phone
+  - Delivery address
+  - Date and time slot
+  - Quantity
+- On booking, an email is sent to both seller and customer with booking details.
+
+---
+
+🗂️ DATABASE MODELS (MongoDB + Mongoose)
+
+**User Model:**
+- name, email, phone, password, role (admin/seller/customer), createdAt
+
+**Seller Model:**
+- userId (ref: User)
+- shopName, address, city, contactNumber
+- status: [pending, active, suspended]
+- createdAt
+
+**Tiffin Model:**
+- sellerId (ref: Seller)
+- title, description, category, price, availableDays[], slots[], imageUrl
+- createdAt
+
+**Booking Model:**
+- customerName, customerEmail, customerPhone
+- tiffinId (ref: Tiffin)
+- sellerId (ref: Seller)
+- date, slot, quantity, totalPrice
+- status: [Pending, Confirmed, Cancelled]
+- createdAt
+
+---
+
+🔐 API ENDPOINTS (Express)
+
+**Auth Routes**
+- POST /api/auth/register
+- POST /api/auth/login
+
+**Seller Routes**
+- GET /api/seller/tiffins → get all tiffins for seller
+- POST /api/seller/tiffins → add new tiffin
+- PUT /api/seller/tiffins/:id → edit tiffin
+- DELETE /api/seller/tiffins/:id → delete tiffin
+- GET /api/seller/bookings → view bookings for seller
+
+**Admin Routes**
+- GET /api/admin/sellers → list all sellers
+- PUT /api/admin/sellers/:id/status → approve/suspend/reactivate
+- GET /api/admin/bookings → list all bookings
+
+**Customer Routes**
+- GET /api/sellers → show only active sellers
+- GET /api/sellers/:id/tiffins → seller menu
+- POST /api/bookings → create booking
+
+---
+
+📧 EMAIL FLOW (Nodemailer Gmail SMTP)
+- On booking:
+  - Email to seller → includes customer name, phone, address, and tiffin details.
+  - Email to customer → confirmation message and seller contact info.
+- On admin approval/suspension:
+  - Email to seller → account approved or suspended notice.
+
+---
+
+🎨 UI REQUIREMENTS
+Use React with Tailwind CSS.
+Responsive design for mobile and desktop.
+Pages:
+- Landing page → show all sellers and their menus.
+- Login/Register (for admin, seller, and customer).
+- Admin dashboard → seller management and booking stats.
+- Seller dashboard → tiffin management and booking list.
+- Customer booking page → booking form + history.
+
+---
+
+⚙️ ADDITIONAL INSTRUCTIONS
+- Use JWT-based auth middleware for route protection.
+- Use Mongoose models for all DB operations.
+- Store images (optional) with Cloudinary.
+- Use `.env` for MONGO_URI, JWT_SECRET, and SMTP creds.
+- Show toast alerts for success/error (frontend).
+- Admin panel at `/admin`, Seller dashboard at `/seller/dashboard`.
+
+Generate clean, modular MERN app code with these features and connected MongoDB backend.
