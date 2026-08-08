@@ -1369,7 +1369,7 @@ app.post("/api/orders/calculate-price", authenticateToken, async (req: AuthReque
       message: `Order placed successfully! 5 tokens transferred to your wallet 🎉`,
     });
 
-    notifyForSingleBooking(booking, user, req.body.tiffinId).catch((err) => {
+    notifyForSingleBooking(booking, user as any, req.body.tiffinId).catch((err) => {
       console.warn("⚠️ Background order notification failed (booking was already created):", err);
     });
   } catch (error: any) {
@@ -1858,7 +1858,7 @@ app.post("/api/orders/calculate-price", authenticateToken, async (req: AuthReque
         message: `Order placed successfully! ${totalRewardTokens} tokens transferred to your wallet 🎉`,
       });
 
-      notifySellersForCartOrders(sellerOrders, user).catch((err) => {
+      notifySellersForCartOrders(sellerOrders, user as any).catch((err) => {
         console.warn("⚠️ Background order notification failed (bookings were already created):", err);
       });
     } catch (error: any) {
