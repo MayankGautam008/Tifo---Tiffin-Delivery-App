@@ -1214,8 +1214,9 @@ app.post("/api/orders/calculate-price", authenticateToken, async (req: AuthReque
                 discountAmount = totalBeforeDiscount * (coupon.discountValue / 100);
                 
                 // Apply maximum discount limit if specified
-                if (coupon.maxDiscount && discountAmount > coupon.maxDiscount) {
-                  discountAmount = coupon.maxDiscount;
+                const maxDisc = (coupon as any).maxDiscountAmount || (coupon as any).maxDiscount;
+                if (maxDisc && discountAmount > maxDisc) {
+                  discountAmount = maxDisc;
                 }
               } else if (coupon.discountType === 'fixed') {
                 // FIXED AMOUNT DISCOUNT - Exactly ₹50 ya jo bhi coupon value hai

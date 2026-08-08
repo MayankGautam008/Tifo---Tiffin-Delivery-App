@@ -12,6 +12,8 @@ function getJWTSecret(): string {
 export interface AuthRequest extends Request {
   userId?: string;
   userRole?: string;
+  file?: any;
+  files?: any;
 }
 
 export function authenticateToken(req: AuthRequest, res: Response, next: NextFunction) {

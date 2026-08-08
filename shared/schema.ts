@@ -458,6 +458,7 @@ export const adminStatsSchema = z.object({
   totalCoupons: z.number(),
   activeCoupons: z.number(),
   couponUsage: z.number(),
+  averageRating: z.number().optional(),
 });
 
 export type AdminStats = z.infer<typeof adminStatsSchema>;

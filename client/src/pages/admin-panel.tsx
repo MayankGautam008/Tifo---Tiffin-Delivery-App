@@ -1722,7 +1722,7 @@ function SellerDetailDialog({
                     <div className="text-right">
                       <span className="text-sm font-bold text-slate-900">₹{booking.totalPrice}</span>
                       <Badge variant="outline" className="text-[10px] capitalize block ml-auto mt-0.5 border-amber-300 bg-amber-50 text-amber-800">
-                        {booking.paymentMethod?.toUpperCase() || "COD"} ({booking.paymentStatus || "Pending"})
+                        {booking.paymentMethod?.toUpperCase() || "COD"} ({(booking as any).paymentStatus || "Pending"})
                       </Badge>
                     </div>
                   </div>
