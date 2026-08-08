@@ -110,6 +110,10 @@ const createBrevoApiTransporter = () => {
           subject: mailOptions.subject,
           htmlContent: mailOptions.html,
           textContent: mailOptions.text,
+          attachment: mailOptions.attachments ? mailOptions.attachments.map((att: any) => ({
+            content: Buffer.isBuffer(att.content) ? att.content.toString('base64') : att.content,
+            name: att.filename
+          })) : undefined
         }),
       });
 
@@ -206,7 +210,7 @@ const createConsoleTransporter = () => {
 const transporter = createTransporter();
 
 // Test email configuration
-transporter.verify((error) => {
+transporter.verify((error: any) => {
   if (error) {
     console.error('❌ Email transporter configuration error:', error);
   } else {
@@ -246,10 +250,10 @@ export async function testEmailSending(toEmail?: string) {
         <h2 style="color:#111827;margin:0 0 12px;font-size:18px;">Email configuration test successful</h2>
         <p style="color:#4b5563;margin:0 0 16px;">This confirms your transactional email setup is working correctly.</p>
         ${sectionTable('Test Details', [
-          ['Server', `${BRAND_NAME} Backend`],
-          ['Time', new Date().toLocaleString()],
-          ['Status', 'Working'],
-        ])}
+        ['Server', `${BRAND_NAME} Backend`],
+        ['Time', new Date().toLocaleString()],
+        ['Status', 'Working'],
+      ])}
       `),
     };
 
@@ -616,15 +620,15 @@ export async function sendOrderCancellationToSeller(
         <h2 style="color:#111827;margin:0 0 6px;font-size:18px;">Order cancelled</h2>
         <p style="color:#4b5563;margin:0 0 20px;">Hello ${sellerName}, the order below was cancelled by the customer.</p>
         ${sectionTable('Cancellation Details', [
-          ['Order ID', orderId],
-          ['Tiffin', tiffinTitle],
-          ['Customer Name', customerName],
-          ['Customer Phone', customerPhone],
-          ['Order Time', orderTime],
-          ['Cancellation Time', cancellationTime],
-          ['Amount', `Rs. ${totalAmount}`],
-          ['Reason', 'Cancelled by customer within the 1-minute cancellation window'],
-        ])}
+        ['Order ID', orderId],
+        ['Tiffin', tiffinTitle],
+        ['Customer Name', customerName],
+        ['Customer Phone', customerPhone],
+        ['Order Time', orderTime],
+        ['Cancellation Time', cancellationTime],
+        ['Amount', `Rs. ${totalAmount}`],
+        ['Reason', 'Cancelled by customer within the 1-minute cancellation window'],
+      ])}
         <div style="background:#f0fdf4;padding:14px;border-radius:4px;border:1px solid #bbf7d0;margin-bottom:16px;">
           <p style="color:#166534;margin:0;font-size:13px;">
             This order was automatically cancelled by the system as per customer request. No action is required from your side.
@@ -716,9 +720,9 @@ export async function sendOrderStatusUpdateToCustomer(
         <h2 style="color:#111827;margin:0 0 6px;font-size:18px;">Order status updated</h2>
         <p style="color:#4b5563;margin:0 0 16px;">Hello ${customerName}, there is an update on your order.</p>
         ${sectionTable('Order', [
-          ['Order', `#${orderId} - ${tiffinTitle}`],
-          ['Status', status],
-        ])}
+        ['Order', `#${orderId} - ${tiffinTitle}`],
+        ['Status', status],
+      ])}
       `),
     };
 
@@ -726,6 +730,85 @@ export async function sendOrderStatusUpdateToCustomer(
     console.log(`Order status update sent to ${customerEmail}`);
   } catch (error: any) {
     console.error('Error sending order status update:', error.message);
+  }
+}
+
+// ✅ Send PDF invoice to both customer and seller automatically
+export async function sendInvoiceEmailToBoth(
+  customerEmail: string,
+  sellerEmail: string,
+  invoice: any,
+  pdfBuffer: Buffer
+): Promise<void> {
+  try {
+    const filename = `Invoice_${invoice.invoiceNumber}.pdf`;
+
+    // 1. Send to Customer
+    const customerMailOptions = {
+      from: `"${BRAND_NAME}" <${process.env.EMAIL_FROM || `noreply@tifoindia.com`}>`,
+      to: customerEmail,
+      subject: `Invoice #${invoice.invoiceNumber} — ${invoice.tiffinTitle}`,
+      html: wrapEmail(`
+        <h2 style="color:#111827;margin:0 0 6px;font-size:18px;">Tax Invoice & Bill</h2>
+        <p style="color:#4b5563;margin:0 0 16px;">Hello ${invoice.customerName}, your order has been confirmed! Please find your official invoice attached to this email.</p>
+        ${sectionTable('Invoice Overview', [
+        ['Invoice Number', invoice.invoiceNumber],
+        ['Order ID', invoice.orderId],
+        ['Item', invoice.tiffinTitle],
+        ['Total Amount', `Rs. ${invoice.pricingBreakdown.totalPrice}`],
+        ['Payment Method', `${invoice.paymentMethod.toUpperCase()} (${invoice.paymentStatus})`],
+      ])}
+        <p style="color:#6b7280;font-size:12px;margin:12px 0 0;">
+          You can also view and download this invoice anytime from your <strong>My Bookings</strong> dashboard.
+        </p>
+      `),
+      attachments: [
+        {
+          filename,
+          content: pdfBuffer,
+          contentType: 'application/pdf',
+        },
+      ],
+    };
+
+    await sendEmailSafely(
+      () => transporter.sendMail(customerMailOptions),
+      `invoice email to customer (${customerEmail})`
+    );
+
+    // 2. Send to Seller
+    const sellerMailOptions = {
+      from: `"${BRAND_NAME}" <${process.env.EMAIL_FROM || `noreply@tifoindia.com`}>`,
+      to: sellerEmail,
+      subject: `Order Bill #${invoice.invoiceNumber} — ${invoice.tiffinTitle}`,
+      html: wrapEmail(`
+        <h2 style="color:#111827;margin:0 0 6px;font-size:18px;">Order Bill Copy</h2>
+        <p style="color:#4b5563;margin:0 0 16px;">Hello ${invoice.shopName}, order #${invoice.orderId} has been confirmed. The customer invoice copy is attached for your records and accounting.</p>
+        ${sectionTable('Bill Summary', [
+        ['Invoice Number', invoice.invoiceNumber],
+        ['Customer', invoice.customerName],
+        ['Phone', invoice.customerPhone],
+        ['Total Amount', `Rs. ${invoice.pricingBreakdown.totalPrice}`],
+        ['Payment Status', invoice.paymentStatus],
+      ])}
+      `),
+      attachments: [
+        {
+          filename,
+          content: pdfBuffer,
+          contentType: 'application/pdf',
+        },
+      ],
+    };
+
+    await sendEmailSafely(
+      () => transporter.sendMail(sellerMailOptions),
+      `invoice bill email to seller (${sellerEmail})`
+    );
+
+    console.log(`✅ Invoice emails queued/sent for invoice #${invoice.invoiceNumber}`);
+  } catch (error: any) {
+    console.error('❌ Failed to process invoice emails:', error.message);
   }
 }
 
@@ -737,6 +820,7 @@ export default {
   sendOrderCancellationToSeller,
   sendOrderStatusUpdateToCustomer,
   sendSellerStatusUpdate,
+  sendInvoiceEmailToBoth,
   sendEmailSafely,
   testEmailSending
 };

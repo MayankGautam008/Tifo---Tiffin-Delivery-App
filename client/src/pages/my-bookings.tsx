@@ -21,9 +21,11 @@ import {
   Clock4,
   Truck,
   Star,
-  Ban
+  Ban,
+  Receipt
 } from "lucide-react";
 import { RatingDialog } from "@/components/rating-dialog";
+import { InvoiceModal } from "@/components/InvoiceModal";
 
 // ✅ NEW: 30 seconds — how long the "Cancel" button stays available after a
 // single/trial order is placed. Weekly/monthly subscriptions are cancelled
@@ -86,6 +88,8 @@ export default function MyBookings() {
   const [ratingDialogOpen, setRatingDialogOpen] = useState(false);
   const [selectedBooking, setSelectedBooking] = useState<any>(null);
   const [selectedSeller, setSelectedSeller] = useState<any>(null);
+  const [selectedInvoiceBookingId, setSelectedInvoiceBookingId] = useState<string | null>(null);
+  const [invoiceModalOpen, setInvoiceModalOpen] = useState(false);
 
   useEffect(() => {
     if (!isAuthenticated) {
@@ -447,6 +451,24 @@ const totalAmount = booking.totalPrice;
                       </div>
                     )}
 
+                    {/* View Invoice Button for Confirmed/Delivered orders */}
+                    {(booking.status === "Confirmed" || booking.status === "Delivered") && (
+                      <div className="mt-3 pt-3 border-t border-gray-200">
+                        <Button
+                          onClick={() => {
+                            setSelectedInvoiceBookingId(booking._id);
+                            setInvoiceModalOpen(true);
+                          }}
+                          variant="outline"
+                          size="sm"
+                          className="w-full bg-red-50 border-red-200 text-red-700 hover:bg-red-100 font-semibold gap-1.5"
+                        >
+                          <Receipt className="w-4 h-4 text-red-600" />
+                          View Invoice & Bill
+                        </Button>
+                      </div>
+                    )}
+
                     {/* Cancel Order - single/trial orders, within 30 seconds of placing */}
                     <CancelOrderButton booking={booking} />
 
@@ -468,6 +490,19 @@ const totalAmount = booking.totalPrice;
         booking={selectedBooking}
         seller={selectedSeller}
       />
+
+      {/* Invoice Modal */}
+      {selectedInvoiceBookingId && (
+        <InvoiceModal
+          bookingId={selectedInvoiceBookingId}
+          isOpen={invoiceModalOpen}
+          onClose={() => {
+            setInvoiceModalOpen(false);
+            setSelectedInvoiceBookingId(null);
+          }}
+          defaultTab="a4"
+        />
+      )}
     </div>
   );
 }

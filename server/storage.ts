@@ -212,7 +212,8 @@ async updateSeller(sellerId: string, updateData: Partial<SharedSeller>): Promise
   async getAllSellersWithUsers(): Promise<SellerWithUser[]> {
     const sellers = await Seller.find()
       .populate('userId')
-      .sort({ createdAt: -1 });
+      .sort({ createdAt: -1 })
+      .lean();
     
     return sellers.map(seller => {
       const sellerObj = toObject<SharedSeller>(seller);

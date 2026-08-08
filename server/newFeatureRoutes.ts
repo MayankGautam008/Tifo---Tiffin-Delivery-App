@@ -19,6 +19,7 @@ import { User } from "./models/User";
 import { Review } from "./models/Review";
 import { earnPoints, redeemPoints, getLoyaltyInfo, getOrCreateAccount } from "./services/loyaltyService";
 import { createNotification } from "./services/notificationService";
+import { emitNotificationToUser, emitNotificationBroadcast } from "./socket";
 
 export function registerNewFeatureRoutes(app: Express) {
 
@@ -94,6 +95,92 @@ export function registerNewFeatureRoutes(app: Express) {
     try {
       const count = await Notification.countDocuments({ userId: req.userId, isRead: false });
       res.json({ count });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // 📢 Admin Broadcast Notification (Send to Customers, Sellers, All, or Specific User)
+  app.post("/api/admin/notifications/broadcast", authenticateToken, requireRole(["admin"]), async (req: AuthRequest, res) => {
+    try {
+      const { targetAudience, targetUserId, title, message, type = "announcement", link = "" } = req.body;
+
+      if (!title || !message) {
+        return res.status(400).json({ message: "Title and message are required." });
+      }
+
+      let userQuery: any = {};
+      if (targetAudience === "customer") {
+        userQuery = { role: "customer" };
+      } else if (targetAudience === "seller") {
+        userQuery = { role: "seller" };
+      } else if (targetAudience === "user" && targetUserId) {
+        userQuery = { _id: targetUserId };
+      }
+
+      const targetUsers = await User.find(userQuery).select("_id role email");
+
+      if (targetUsers.length === 0) {
+        return res.status(404).json({ message: "No matching target users found." });
+      }
+
+      // Create notification objects for bulk insertion
+      const docs = targetUsers.map((user) => ({
+        userId: user._id,
+        type: type || "system",
+        title: title.trim(),
+        message: message.trim(),
+        data: { link: link || "", targetAudience: targetAudience || "all", isBroadcast: true },
+        isRead: false,
+      }));
+
+      const createdNotifications = await Notification.insertMany(docs);
+
+      // Trigger real-time Socket.IO emission
+      targetUsers.forEach((user) => {
+        emitNotificationToUser(user._id.toString(), {
+          title,
+          message,
+          type,
+          data: { link },
+          createdAt: new Date(),
+        });
+      });
+      emitNotificationBroadcast({ title, message, type, createdAt: new Date() });
+
+      res.status(201).json({
+        success: true,
+        message: `Notification broadcasted to ${createdNotifications.length} user(s).`,
+        count: createdNotifications.length,
+        targetAudience,
+      });
+    } catch (err: any) {
+      console.error("❌ Broadcast notification error:", err);
+      res.status(500).json({ message: err.message || "Failed to broadcast notification." });
+    }
+  });
+
+  // 📜 Get Broadcast History (Admin)
+  app.get("/api/admin/notifications/broadcast-history", authenticateToken, requireRole(["admin"]), async (_req: AuthRequest, res) => {
+    try {
+      const broadcasts = await Notification.aggregate([
+        { $match: { "data.isBroadcast": true } },
+        {
+          $group: {
+            _id: { title: "$title", message: "$message", createdAt: "$createdAt" },
+            title: { $first: "$title" },
+            message: { $first: "$message" },
+            type: { $first: "$type" },
+            targetAudience: { $first: "$data.targetAudience" },
+            createdAt: { $first: "$createdAt" },
+            recipientCount: { $sum: 1 },
+          },
+        },
+        { $sort: { createdAt: -1 } },
+        { $limit: 20 },
+      ]);
+
+      res.json({ history: broadcasts });
     } catch (err: any) {
       res.status(500).json({ message: err.message });
     }

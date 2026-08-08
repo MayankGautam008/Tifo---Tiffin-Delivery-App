@@ -45,6 +45,10 @@ import {
   PlusCircle,
   MinusCircle,
   History,
+  Bell,
+  Send,
+  Megaphone,
+  Radio,
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -1319,6 +1323,7 @@ function SellerManagement() {
 
   const sellersWithStats = sellers.map((seller) => {
     const sellerBookings = bookings.filter((booking) => booking.seller?._id === seller._id);
+    const pendingBookings = sellerBookings.filter((booking) => booking.status === "Pending");
     const totalRevenue = sellerBookings.reduce((sum, booking) => sum + (booking.totalPrice || 0), 0);
     const couponBookings = sellerBookings.filter((booking) => (booking.discountAmount || 0) > 0);
     const totalCouponDiscount = couponBookings.reduce((sum, booking) => sum + (booking.discountAmount || 0), 0);
@@ -1326,10 +1331,12 @@ function SellerManagement() {
       ...seller,
       stats: {
         totalBookings: sellerBookings.length,
+        pendingCount: pendingBookings.length,
         totalRevenue,
         totalCouponDiscount,
         couponOrdersCount: couponBookings.length,
       },
+      pendingBookings,
       bookings: sellerBookings,
     };
   });
@@ -1341,7 +1348,14 @@ function SellerManagement() {
       seller.user.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
       seller.contactNumber.includes(searchTerm);
 
-    const matchesTab = activeSellerTab === "all" ? seller.status !== "suspended" : seller.status === activeSellerTab;
+    let matchesTab = true;
+    if (activeSellerTab === "all") {
+      matchesTab = seller.status !== "suspended";
+    } else if (activeSellerTab === "with-pending") {
+      matchesTab = seller.stats.pendingCount > 0;
+    } else {
+      matchesTab = seller.status === activeSellerTab;
+    }
 
     return matchesSearch && matchesTab;
   });
@@ -1349,6 +1363,7 @@ function SellerManagement() {
   const counts = {
     all: sellersWithStats.filter((s) => s.status !== "suspended").length,
     active: sellersWithStats.filter((s) => s.status === "active").length,
+    "with-pending": sellersWithStats.filter((s) => s.stats.pendingCount > 0).length,
     suspended: sellersWithStats.filter((s) => s.status === "suspended").length,
     pending: sellersWithStats.filter((s) => s.status === "pending").length,
   };
@@ -1369,7 +1384,7 @@ function SellerManagement() {
       </div>
 
       <div className="flex gap-2 overflow-x-auto pb-1 border-b border-slate-100">
-        {(["all", "active", "suspended", "pending"] as const).map((tab) => (
+        {(["all", "active", "with-pending", "suspended", "pending"] as const).map((tab) => (
           <button
             key={tab}
             onClick={() => setActiveSellerTab(tab)}
@@ -1379,8 +1394,10 @@ function SellerManagement() {
                 : "border-transparent text-slate-500 hover:text-slate-700"
             }`}
           >
-            {tab.charAt(0).toUpperCase() + tab.slice(1)}
-            <span className="ml-1.5 text-xs text-slate-400">({counts[tab]})</span>
+            {tab === "with-pending" ? "Has Pending Orders" : tab.charAt(0).toUpperCase() + tab.slice(1)}
+            <span className={`ml-1.5 text-xs ${tab === "with-pending" && counts[tab] > 0 ? "text-amber-700 font-bold" : "text-slate-400"}`}>
+              ({counts[tab]})
+            </span>
           </button>
         ))}
       </div>
@@ -1406,6 +1423,12 @@ function SellerManagement() {
                         Featured
                       </Badge>
                     )}
+                    {seller.stats.pendingCount > 0 && (
+                      <Badge variant="outline" className="text-xs border-amber-400 text-amber-900 bg-amber-100 font-bold animate-pulse">
+                        <AlertCircle className="h-3 w-3 mr-1 text-amber-700" />
+                        {seller.stats.pendingCount} Pending Order{seller.stats.pendingCount > 1 ? "s" : ""}
+                      </Badge>
+                    )}
                   </div>
                   <p className="text-xs text-slate-500">Owner: {seller.user.name}</p>
 
@@ -1428,6 +1451,15 @@ function SellerManagement() {
                 </div>
 
                 <div className="flex items-center gap-4 sm:gap-6 shrink-0" onClick={(e) => e.stopPropagation()}>
+                  {seller.stats.pendingCount > 0 && (
+                    <div className="text-right bg-amber-50 border border-amber-300 px-2.5 py-1 rounded-md">
+                      <div className="text-sm font-extrabold text-amber-800 flex items-center justify-end gap-1">
+                        <AlertCircle className="h-3.5 w-3.5 text-amber-600 animate-bounce" />
+                        {seller.stats.pendingCount}
+                      </div>
+                      <div className="text-[10px] font-bold text-amber-700 uppercase tracking-wide">Pending</div>
+                    </div>
+                  )}
                   <div className="text-right">
                     <div className="text-sm font-semibold text-slate-900">{seller.stats.totalBookings}</div>
                     <div className="text-[11px] text-slate-500 uppercase tracking-wide">Orders</div>
@@ -1566,7 +1598,8 @@ function SellerDetailDialog({
 }: {
   seller:
     | (SellerWithUser & {
-        stats: { totalBookings: number; totalRevenue: number; totalCouponDiscount: number; couponOrdersCount: number };
+        stats: { totalBookings: number; pendingCount: number; totalRevenue: number; totalCouponDiscount: number; couponOrdersCount: number };
+        pendingBookings: BookingWithDetails[];
         bookings: BookingWithDetails[];
       })
     | null;
@@ -1578,6 +1611,7 @@ function SellerDetailDialog({
   const sortedBookings = [...seller.bookings].sort(
     (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
   );
+  const pendingBookings = sortedBookings.filter((b) => b.status === "Pending");
   const couponBookings = sortedBookings.filter((b) => (b.discountAmount || 0) > 0);
 
   return (
@@ -1595,8 +1629,14 @@ function SellerDetailDialog({
                 Featured
               </Badge>
             )}
+            {pendingBookings.length > 0 && (
+              <Badge variant="outline" className="text-xs border-amber-400 text-amber-900 bg-amber-100 font-bold">
+                <AlertCircle className="h-3 w-3 mr-1 text-amber-700 animate-pulse" />
+                {pendingBookings.length} Pending Order{pendingBookings.length > 1 ? "s" : ""}
+              </Badge>
+            )}
           </DialogTitle>
-          <DialogDescription>Full seller profile, revenue, and coupon-discount breakdown.</DialogDescription>
+          <DialogDescription>Full seller profile, pending orders, revenue, and coupon breakdown.</DialogDescription>
         </DialogHeader>
 
         {/* Owner & contact info */}
@@ -1630,24 +1670,104 @@ function SellerDetailDialog({
         </div>
 
         {/* Stats */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-          <div className="rounded-md border border-slate-200 p-3 text-center">
-            <div className="text-lg font-bold text-slate-900">{seller.stats.totalBookings}</div>
-            <div className="text-[11px] text-slate-500 uppercase tracking-wide">Total Orders</div>
+        <div className="grid grid-cols-2 sm:grid-cols-5 gap-2.5">
+          <div className="rounded-md border border-slate-200 p-2.5 text-center">
+            <div className="text-base font-bold text-slate-900">{seller.stats.totalBookings}</div>
+            <div className="text-[10px] text-slate-500 uppercase tracking-wide">Total Orders</div>
           </div>
-          <div className="rounded-md border border-slate-200 p-3 text-center">
-            <div className="text-lg font-bold text-slate-900">₹{seller.stats.totalRevenue}</div>
-            <div className="text-[11px] text-slate-500 uppercase tracking-wide">Customer Paid</div>
+          <div className={`rounded-md border p-2.5 text-center ${pendingBookings.length > 0 ? "border-amber-300 bg-amber-50" : "border-slate-200"}`}>
+            <div className={`text-base font-bold ${pendingBookings.length > 0 ? "text-amber-800 flex items-center justify-center gap-1" : "text-slate-900"}`}>
+              {pendingBookings.length > 0 && <AlertCircle className="h-4 w-4 text-amber-600 animate-pulse" />}
+              {pendingBookings.length}
+            </div>
+            <div className={`text-[10px] uppercase tracking-wide font-bold ${pendingBookings.length > 0 ? "text-amber-700" : "text-slate-500"}`}>Pending Unconfirmed</div>
           </div>
-          <div className="rounded-md border border-rose-200 bg-rose-50 p-3 text-center">
-            <div className="text-lg font-bold text-rose-600">₹{seller.stats.totalCouponDiscount}</div>
-            <div className="text-[11px] text-rose-500 uppercase tracking-wide">Coupon Difference (Admin pays)</div>
+          <div className="rounded-md border border-slate-200 p-2.5 text-center">
+            <div className="text-base font-bold text-slate-900">₹{seller.stats.totalRevenue}</div>
+            <div className="text-[10px] text-slate-500 uppercase tracking-wide">Customer Paid</div>
           </div>
-          <div className="rounded-md border border-slate-200 p-3 text-center">
-            <div className="text-lg font-bold text-slate-900">{seller.stats.couponOrdersCount}</div>
-            <div className="text-[11px] text-slate-500 uppercase tracking-wide">Orders with Coupon</div>
+          <div className="rounded-md border border-rose-200 bg-rose-50 p-2.5 text-center">
+            <div className="text-base font-bold text-rose-600">₹{seller.stats.totalCouponDiscount}</div>
+            <div className="text-[10px] text-rose-500 uppercase tracking-wide">Coupon Diff</div>
+          </div>
+          <div className="rounded-md border border-slate-200 p-2.5 text-center">
+            <div className="text-base font-bold text-slate-900">{seller.stats.couponOrdersCount}</div>
+            <div className="text-[10px] text-slate-500 uppercase tracking-wide">Coupon Orders</div>
           </div>
         </div>
+
+        {/* ⏳ Pending Unconfirmed Orders Section */}
+        {pendingBookings.length > 0 && (
+          <div className="border border-amber-200 bg-amber-50/60 rounded-lg p-3 space-y-2.5">
+            <div className="flex items-center justify-between">
+              <h4 className="text-sm font-bold text-amber-900 flex items-center gap-1.5">
+                <AlertCircle className="h-4 w-4 text-amber-600 animate-pulse" />
+                Pending Unconfirmed Orders ({pendingBookings.length})
+              </h4>
+              <Badge className="bg-amber-600 text-white text-[11px]">
+                Awaiting Seller Confirmation
+              </Badge>
+            </div>
+
+            <div className="space-y-2.5 max-h-72 overflow-y-auto pr-1">
+              {pendingBookings.map((booking) => (
+                <div key={booking._id} className="bg-white border border-amber-200 rounded-md p-3 text-xs space-y-2 shadow-xs">
+                  <div className="flex justify-between items-start border-b border-slate-100 pb-2">
+                    <div>
+                      <span className="font-bold text-slate-900 text-sm">{booking.tiffin?.title || "Tiffin Order"}</span>
+                      <span className="text-slate-500 text-[11px] block">
+                        Order ID: <code className="bg-slate-100 px-1 py-0.5 rounded text-slate-800 font-mono text-[11px]">{booking._id}</code> • {format(new Date(booking.createdAt), "dd MMM yyyy, hh:mm a")}
+                      </span>
+                    </div>
+                    <div className="text-right">
+                      <span className="text-sm font-bold text-slate-900">₹{booking.totalPrice}</span>
+                      <Badge variant="outline" className="text-[10px] capitalize block ml-auto mt-0.5 border-amber-300 bg-amber-50 text-amber-800">
+                        {booking.paymentMethod?.toUpperCase() || "COD"} ({booking.paymentStatus || "Pending"})
+                      </Badge>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-slate-700 bg-slate-50 p-2.5 rounded border border-slate-200">
+                    <div>
+                      <p className="font-bold text-slate-900 text-xs mb-0.5">👤 Customer Details:</p>
+                      <p className="font-medium text-slate-800">{booking.customerName}</p>
+                      <p className="text-slate-600 flex items-center gap-1">
+                        <Phone className="h-3 w-3 text-slate-400" /> {booking.customerPhone}
+                      </p>
+                      <p className="text-slate-600 flex items-center gap-1">
+                        <Mail className="h-3 w-3 text-slate-400" /> {booking.customerEmail}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="font-bold text-slate-900 text-xs mb-0.5">📦 Order Details:</p>
+                      <p className="text-slate-600">
+                        <span className="font-medium text-slate-800">Address:</span> {booking.customerAddress || (booking as any).deliveryAddress || "N/A"}, {booking.customerCity}
+                      </p>
+                      <p className="text-slate-600">
+                        <span className="font-medium text-slate-800">Slot & Type:</span> {booking.slot} ({booking.bookingType})
+                      </p>
+                      <p className="text-slate-600">
+                        <span className="font-medium text-slate-800">Quantity:</span> {booking.quantity || 1}
+                      </p>
+                    </div>
+                  </div>
+
+                  {booking.addOns && booking.addOns.length > 0 && (
+                    <div className="text-[11px] text-slate-600">
+                      <span className="font-semibold text-slate-800">Add-ons:</span> {booking.addOns.map(a => `${a.name} (x${a.quantity})`).join(", ")}
+                    </div>
+                  )}
+
+                  {booking.customization && (
+                    <div className="text-[11px] text-amber-900 bg-amber-50 p-1.5 rounded border border-amber-200">
+                      <span className="font-bold">Instructions:</span> "{booking.customization}"
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* Coupon-discounted orders */}
         {couponBookings.length > 0 && (
@@ -1738,6 +1858,240 @@ function SellerDetailDialog({
 }
 
 // ---------------------------------------------------------------------------
+// Broadcast Notification Management Component
+// ---------------------------------------------------------------------------
+
+interface BroadcastItem {
+  _id: string;
+  title: string;
+  message: string;
+  type: string;
+  targetAudience: string;
+  createdAt: string;
+  recipientCount: number;
+}
+
+function NotificationBroadcastManagement() {
+  const { toast } = useToast();
+  const [form, setForm] = useState({
+    targetAudience: "all",
+    targetUserId: "",
+    title: "",
+    message: "",
+    type: "announcement",
+    link: "",
+  });
+
+  const { data: historyData, isLoading } = useQuery<{ history: BroadcastItem[] }>({
+    queryKey: ["/api/admin/notifications/broadcast-history"],
+    queryFn: () => apiRequest("GET", "/api/admin/notifications/broadcast-history"),
+  });
+
+  const broadcastMutation = useMutation({
+    mutationFn: (data: typeof form) =>
+      apiRequest("POST", "/api/admin/notifications/broadcast", data),
+    onSuccess: (res: any) => {
+      toast({
+        title: "Notification Broadcasted!",
+        description: res.message || "Notification sent successfully.",
+      });
+      setForm({
+        targetAudience: "all",
+        targetUserId: "",
+        title: "",
+        message: "",
+        type: "announcement",
+        link: "",
+      });
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/notifications/broadcast-history"] });
+    },
+    onError: (err: Error) => {
+      toast({
+        title: "Broadcast Failed",
+        description: err.message,
+        variant: "destructive",
+      });
+    },
+  });
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!form.title.trim() || !form.message.trim()) {
+      toast({
+        title: "Validation Error",
+        description: "Title and message are required.",
+        variant: "destructive",
+      });
+      return;
+    }
+    broadcastMutation.mutate(form);
+  };
+
+  return (
+    <div className="space-y-6">
+      <SectionHeading
+        title="Broadcast Notifications"
+        description="Send live messages and announcements to Customers, Sellers, or All Users."
+      />
+
+      <div className="grid gap-6 lg:grid-cols-2">
+        {/* Send Broadcast Form */}
+        <Card className="border-slate-200 shadow-sm">
+          <CardHeader className="border-b border-slate-100 pb-4">
+            <div className="flex items-center gap-2">
+              <Megaphone className="h-5 w-5 text-red-500" />
+              <div>
+                <CardTitle className="text-base">Send New Notification</CardTitle>
+                <CardDescription>Target specific user groups or broadcast to everyone.</CardDescription>
+              </div>
+            </div>
+          </CardHeader>
+          <CardContent className="pt-6">
+            <form onSubmit={handleSubmit} className="space-y-4">
+              <div>
+                <Label className="text-slate-700 font-medium">Target Audience</Label>
+                <Select
+                  value={form.targetAudience}
+                  onValueChange={(val) => setForm({ ...form, targetAudience: val })}
+                >
+                  <SelectTrigger className="mt-1">
+                    <SelectValue placeholder="Select target audience" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">👥 All Users (Customers & Sellers)</SelectItem>
+                    <SelectItem value="customer">🛒 Customers Only</SelectItem>
+                    <SelectItem value="seller">🧑‍🍳 Sellers Only</SelectItem>
+                    <SelectItem value="user">👤 Specific User ID</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {form.targetAudience === "user" && (
+                <div>
+                  <Label className="text-slate-700 font-medium">User ID</Label>
+                  <Input
+                    placeholder="Enter user's MongoDB ObjectId"
+                    value={form.targetUserId}
+                    onChange={(e) => setForm({ ...form, targetUserId: e.target.value })}
+                    className="mt-1"
+                  />
+                </div>
+              )}
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <Label className="text-slate-700 font-medium">Category / Type</Label>
+                  <Select
+                    value={form.type}
+                    onValueChange={(val) => setForm({ ...form, type: val })}
+                  >
+                    <SelectTrigger className="mt-1">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="announcement">📢 Announcement</SelectItem>
+                      <SelectItem value="promo">🎁 Promotion / Offer</SelectItem>
+                      <SelectItem value="urgent">⚠️ Urgent Alert</SelectItem>
+                      <SelectItem value="system">🔔 System Info</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div>
+                  <Label className="text-slate-700 font-medium">Target Link (Optional)</Label>
+                  <Input
+                    placeholder="e.g. /my-bookings or /seller/dashboard"
+                    value={form.link}
+                    onChange={(e) => setForm({ ...form, link: e.target.value })}
+                    className="mt-1"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <Label className="text-slate-700 font-medium">Notification Title *</Label>
+                <Input
+                  placeholder="e.g. 🎉 Special Weekend Offer On Tiffins!"
+                  value={form.title}
+                  onChange={(e) => setForm({ ...form, title: e.target.value })}
+                  className="mt-1 font-medium"
+                  required
+                />
+              </div>
+
+              <div>
+                <Label className="text-slate-700 font-medium">Message Body *</Label>
+                <textarea
+                  rows={4}
+                  placeholder="Write message details for your customers/sellers..."
+                  value={form.message}
+                  onChange={(e) => setForm({ ...form, message: e.target.value })}
+                  className="w-full mt-1 p-3 text-sm rounded-lg border border-slate-200 focus:outline-none focus:ring-2 focus:ring-red-500/20 focus:border-red-500"
+                  required
+                />
+              </div>
+
+              <Button
+                type="submit"
+                disabled={broadcastMutation.isPending}
+                className="w-full bg-red-600 hover:bg-red-700 text-white font-medium shadow-sm hover:shadow transition-all"
+              >
+                {broadcastMutation.isPending ? (
+                  "Broadcasting..."
+                ) : (
+                  <>
+                    <Send className="w-4 h-4 mr-2" />
+                    Broadcast Notification
+                  </>
+                )}
+              </Button>
+            </form>
+          </CardContent>
+        </Card>
+
+        {/* Broadcast History */}
+        <Card className="border-slate-200 shadow-sm flex flex-col">
+          <CardHeader className="border-b border-slate-100 pb-4">
+            <div className="flex items-center gap-2">
+              <History className="h-5 w-5 text-slate-500" />
+              <div>
+                <CardTitle className="text-base">Sent History</CardTitle>
+                <CardDescription>Recent notifications broadcasted by admins.</CardDescription>
+              </div>
+            </div>
+          </CardHeader>
+          <CardContent className="p-0 flex-1 overflow-y-auto">
+            {isLoading ? (
+              <div className="p-8 text-center text-sm text-slate-400">Loading broadcast history...</div>
+            ) : !historyData?.history || historyData.history.length === 0 ? (
+              <div className="p-8 text-center text-sm text-slate-400">No broadcast history yet.</div>
+            ) : (
+              <div className="divide-y divide-slate-100">
+                {historyData.history.map((item, idx) => (
+                  <div key={idx} className="p-4 hover:bg-slate-50 transition-colors space-y-1">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="font-semibold text-slate-900 text-sm">{item.title}</span>
+                      <Badge variant="outline" className="text-[10px] uppercase font-bold text-[#C1440E] border-[#C1440E]/20 bg-[#C1440E]/5">
+                        {item.targetAudience || "all"}
+                      </Badge>
+                    </div>
+                    <p className="text-xs text-slate-600 leading-relaxed">{item.message}</p>
+                    <div className="flex items-center justify-between text-[11px] text-slate-400 pt-1">
+                      <span>Recipients: {item.recipientCount} user(s)</span>
+                      <span>{format(new Date(item.createdAt), "MMM d, yyyy h:mm a")}</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Admin Panel (root)
 // ---------------------------------------------------------------------------
 
@@ -1805,7 +2159,7 @@ export default function AdminPanel() {
         </div>
 
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-          <TabsList className="grid w-full grid-cols-3 sm:w-auto sm:inline-grid">
+          <TabsList className="grid w-full grid-cols-4 sm:w-auto sm:inline-grid">
             <TabsTrigger value="sellers" className="flex items-center gap-2">
               <ChefHat className="h-4 w-4" />
               Sellers
@@ -1817,6 +2171,10 @@ export default function AdminPanel() {
             <TabsTrigger value="wallets" className="flex items-center gap-2">
               <Wallet className="h-4 w-4" />
               Wallets
+            </TabsTrigger>
+            <TabsTrigger value="notifications" className="flex items-center gap-2">
+              <Bell className="h-4 w-4" />
+              Send Notifications
             </TabsTrigger>
           </TabsList>
 
@@ -1830,6 +2188,10 @@ export default function AdminPanel() {
 
           <TabsContent value="wallets">
             <WalletManagement />
+          </TabsContent>
+
+          <TabsContent value="notifications">
+            <NotificationBroadcastManagement />
           </TabsContent>
         </Tabs>
       </div>

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Bell, BellRing, Check, CheckCheck, Trash2, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -7,6 +7,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { apiRequest } from "@/lib/queryClient";
 import { queryClient } from "@/lib/queryClient";
 import { useAuth } from "@/lib/auth-context";
+import { getSocket } from "@/lib/socket";
 import { formatDistanceToNow } from "date-fns";
 import {
   Popover,
@@ -21,6 +22,9 @@ interface Notification {
   message: string;
   isRead: boolean;
   createdAt: string;
+  data?: {
+    link?: string;
+  };
 }
 
 interface NotificationsResponse {
@@ -32,6 +36,9 @@ interface NotificationsResponse {
 const typeColors: Record<string, string> = {
   loyalty_points: "bg-yellow-100 text-yellow-700 border-yellow-200",
   system: "bg-blue-100 text-blue-700 border-blue-200",
+  announcement: "bg-orange-100 text-orange-700 border-orange-200",
+  promo: "bg-purple-100 text-purple-700 border-purple-200",
+  urgent: "bg-red-100 text-red-700 border-red-200",
   order: "bg-green-100 text-green-700 border-green-200",
   refund: "bg-purple-100 text-purple-700 border-purple-200",
 };
@@ -39,6 +46,9 @@ const typeColors: Record<string, string> = {
 const typeEmoji: Record<string, string> = {
   loyalty_points: "⭐",
   system: "🔔",
+  announcement: "📢",
+  promo: "🎁",
+  urgent: "⚠️",
   order: "📦",
   refund: "💰",
 };
@@ -50,8 +60,21 @@ export function NotificationBell() {
   const { data, isLoading } = useQuery<NotificationsResponse>({
     queryKey: ["/api/notifications"],
     enabled: isAuthenticated,
-    refetchInterval: 30000, // poll every 30s
+    refetchInterval: 15000,
   });
+
+  useEffect(() => {
+    const socket = getSocket();
+    if (socket) {
+      const handleNewNotification = () => {
+        queryClient.invalidateQueries({ queryKey: ["/api/notifications"] });
+      };
+      socket.on("new_notification", handleNewNotification);
+      return () => {
+        socket.off("new_notification", handleNewNotification);
+      };
+    }
+  }, [isAuthenticated]);
 
   const unreadCount = data?.unreadCount ?? 0;
   const notifications = data?.notifications ?? [];

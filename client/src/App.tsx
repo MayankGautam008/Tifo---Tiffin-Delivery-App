@@ -27,6 +27,7 @@ import HelpPage from "@/pages/help";
 import ForgotPassword from "./pages/ForgotPassword";
 import VerifyOTP from "./pages/VerifyOTP";
 import ResetPassword from "./pages/ResetPassword";
+import InvoiceVerifyPage from "@/pages/invoice-verify";
 
 function Router() {
   return (
@@ -50,6 +51,7 @@ function Router() {
       <Route path="/forgot-password" component={ForgotPassword} />
 <Route path="/verify-otp" component={VerifyOTP} />
 <Route path="/reset-password" component={ResetPassword} />
+      <Route path="/invoice/verify/:token" component={InvoiceVerifyPage} />
       <Route component={NotFound} />
     </Switch>
   );

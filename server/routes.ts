@@ -21,6 +21,7 @@ import {
 import { withLiveStatus, isCustomizableForTomorrow } from "./services/deliveryScheduleService";
 import { validateTiffinSlotBooking } from "@shared/tiffinSlots";
 import { registerWalletRoutes } from "./walletRoutes";
+import invoiceRoutes, { generateOrCreateInvoiceForBooking } from "./invoiceRoutes";
 import {
   initSocket,
   emitNewOrderToSeller,
@@ -592,6 +593,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // ✅ Register wallet routes (customer wallet + admin wallet/coupon controls)
   registerWalletRoutes(app);
+
+  // ✅ Register invoice routes
+  app.use("/api/invoices", invoiceRoutes);
   
   // Auth routes
   app.post(
@@ -2413,6 +2417,17 @@ app.put("/api/seller/bookings/:id", authenticateToken, async (req: AuthRequest, 
     // notification email is an outbound SMTP call that can take seconds, so
     // it runs in the background after the response instead of blocking it.
     res.json(updatedBooking);
+
+    // ✅ Automatic Invoice Generation & PDF Email Dispatch on Order Confirmation or Delivery
+    if (status === "Confirmed" || status === "Delivered") {
+      (async () => {
+        try {
+          await generateOrCreateInvoiceForBooking(id);
+        } catch (invErr: any) {
+          console.warn("⚠️ Invoice generation background trigger error:", invErr.message);
+        }
+      })();
+    }
 
     if (booking.customerEmail) {
       (async () => {

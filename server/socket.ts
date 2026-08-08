@@ -170,3 +170,14 @@ export function emitOrderUpdateToSeller(sellerId: string, booking: unknown) {
 export function emitTiffinAvailabilityUpdate(tiffin: unknown) {
   io?.emit("tiffin:availability-updated", tiffin);
 }
+
+/** Pushes a new notification to a specific user */
+export function emitNotificationToUser(userId: string, notification: unknown) {
+  io?.to(`user:${userId}`).emit("new_notification", notification);
+}
+
+/** Broadcasts a notification to all connected clients */
+export function emitNotificationBroadcast(notification: unknown) {
+  io?.emit("new_notification", notification);
+}
+

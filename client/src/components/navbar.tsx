@@ -5,6 +5,7 @@ import { ChefHat, User, LogOut, Menu, X, ShoppingCart, MapPin, ChevronDown, Cale
 import { useAuth } from "@/lib/auth-context";
 import { useCart } from "@/lib/cart-context";
 import { WalletButton } from "@/components/wallet-button";
+import { NotificationBell } from "@/components/notification-bell";
 import { useState } from "react";
 import {
   DropdownMenu,
@@ -64,6 +65,7 @@ export function Navbar() {
           {/* Desktop Navigation */}
           <div className="hidden md:flex items-center gap-3">
             {(!isAuthenticated || user?.role === "customer") && <CartButton />}
+            {isAuthenticated && <NotificationBell />}
             {isAuthenticated && user?.role === "customer" && <WalletButton />}
             
             {isAuthenticated ? (
@@ -139,6 +141,7 @@ export function Navbar() {
           {/* Mobile - Cart + Menu Toggle */}
           <div className="flex items-center gap-2 md:hidden">
             {(!isAuthenticated || user?.role === "customer") && <CartButton onClick={() => setMobileMenuOpen(false)} />}
+            {isAuthenticated && <NotificationBell />}
             {isAuthenticated && user?.role === "customer" && <WalletButton />}
             <button
               onClick={() => setMobileMenuOpen(!mobileMenuOpen)}

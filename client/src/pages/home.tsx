@@ -75,6 +75,7 @@ import { Link, useLocation } from "wouter";
 import type { TiffinWithSeller } from "@shared/schema";
 import { useAuth } from "@/lib/auth-context";
 import { WalletButton } from "@/components/wallet-button";
+import { NotificationBell } from "@/components/notification-bell";
 import { useCart } from "@/lib/cart-context";
 import { hasSellerLandedOnDashboard, markSellerLandedOnDashboard } from "@/lib/seller-landing";
 
@@ -953,7 +954,7 @@ export default function Home() {
             </div>
             <div className="flex items-center gap-2 sm:gap-3">
               <Link href="/cart">
-                <button className="relative w-9 h-9 sm:w-10 sm:h-10 rounded-full bg-gray-100 flex items-center justify-center hover:bg-gray-200 transition-colors">
+                <button className="relative w-9 h-9 sm:w-10 sm:h-10 rounded-full bg-gray-100 flex items-center justify-center hover:bg-gray-200 transition-colors" data-testid="button-cart">
                   <ShoppingCart className="w-5 h-5 text-gray-700" />
                   {totalItems > 0 && (
                     <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 rounded-full bg-red-600 text-white text-[10px] font-bold flex items-center justify-center shadow-md">
@@ -962,6 +963,7 @@ export default function Home() {
                   )}
                 </button>
               </Link>
+              {isAuthenticated && <NotificationBell />}
               {isAuthenticated && user?.role === "customer" && <WalletButton />}
               {isAuthenticated ? (
                 <DropdownMenu>

@@ -1,5 +1,5 @@
-// services/telegramService.ts
-const TelegramBot = require('node-telegram-bot-api');
+import TelegramBot from 'node-telegram-bot-api';
+import mongoose from 'mongoose';
 import { TelegramSeller } from '../models/TelegramSeller';
 
 // Initialize Telegram Bot
@@ -10,6 +10,15 @@ if (!TELEGRAM_BOT_TOKEN) {
 }
 
 export const bot = TELEGRAM_BOT_TOKEN ? new TelegramBot(TELEGRAM_BOT_TOKEN, { polling: true }) : null;
+
+if (bot) {
+  bot.on('polling_error', (error: any) => {
+    if (error?.code === 'ETELEGRAM' && error?.message?.includes('409 Conflict')) {
+      return; // Ignore duplicate polling instance conflicts
+    }
+    console.warn('⚠️ Telegram polling issue:', error?.message || error);
+  });
+}
 
 // Generate verification code 
 function generateVerificationCode(): string {
@@ -104,15 +113,12 @@ export function setupTelegramBot() {
       // Simple check - remove complex database queries for now
       const verificationCode = generateVerificationCode();
       
-      // Direct save without complex checks
-      const TelegramSeller = require('../models/TelegramSeller').TelegramSeller;
-      
       await TelegramSeller.create({
         email,
         telegramChatId: chatId,
         isVerified: false,
         verificationCode,
-        sellerId: new (require('mongoose').Types.ObjectId)() // Temporary
+        sellerId: new mongoose.Types.ObjectId() // Temporary
       });
 
       await bot.sendMessage(chatId,
@@ -133,7 +139,6 @@ export function setupTelegramBot() {
     const code = match![1].trim();
 
     try {
-      const TelegramSeller = require('../models/TelegramSeller').TelegramSeller;
       const telegramSeller = await TelegramSeller.findOne({ telegramChatId: chatId });
       
       if (!telegramSeller) {

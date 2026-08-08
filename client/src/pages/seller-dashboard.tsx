@@ -61,7 +61,9 @@ import {
   NotebookPen,
   Upload,
   Image as ImageIcon,
+  Receipt,
 } from "lucide-react";
+import { InvoiceModal } from "@/components/InvoiceModal";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -235,7 +237,15 @@ function RevenueStats({ bookings }: { bookings: BookingWithDetails[] }) {
 // ------------------------------------------------------------------
 // Order Details Dialog
 // ------------------------------------------------------------------
-function OrderDetails({ booking, onClose }: { booking: BookingWithDetails; onClose: () => void }) {
+function OrderDetails({
+  booking,
+  onClose,
+  onOpenInvoice,
+}: {
+  booking: BookingWithDetails;
+  onClose: () => void;
+  onOpenInvoice?: (bookingId: string) => void;
+}) {
   const tiffin = booking.tiffin || {
     title: "Service not available",
     description: "This service is no longer available",
@@ -579,7 +589,17 @@ function OrderDetails({ booking, onClose }: { booking: BookingWithDetails; onClo
           </Card>
         </div>
 
-        <DialogFooter>
+        <DialogFooter className="flex flex-col sm:flex-row gap-2">
+          {(booking.status === "Confirmed" || booking.status === "Delivered") && onOpenInvoice && (
+            <Button
+              onClick={() => onOpenInvoice(booking._id)}
+              variant="outline"
+              className="w-full sm:w-auto text-red-700 bg-red-50 border-red-200 hover:bg-red-100 font-semibold gap-1.5"
+            >
+              <Receipt className="w-4 h-4 text-red-600" />
+              Bill & Thermal Receipt (Parchi)
+            </Button>
+          )}
           <Button onClick={onClose} className="w-full sm:w-auto">
             Close
           </Button>
@@ -1041,6 +1061,13 @@ export default function SellerDashboard() {
   const [isCustomizationDialogOpen, setIsCustomizationDialogOpen] = useState(false);
   const [selectedTiffinForManagement, setSelectedTiffinForManagement] = useState<Tiffin | null>(null);
   const [selectedOrder, setSelectedOrder] = useState<BookingWithDetails | null>(null);
+  const [invoiceModalBookingId, setInvoiceModalBookingId] = useState<string | null>(null);
+  const [invoiceModalOpen, setInvoiceModalOpen] = useState(false);
+
+  const handleOpenInvoice = (bookingId: string) => {
+    setInvoiceModalBookingId(bookingId);
+    setInvoiceModalOpen(true);
+  };
   const [newAddOn, setNewAddOn] = useState<Partial<AddOn>>({ name: "", description: "", price: 0, available: true });
   const [newCustomization, setNewCustomization] = useState<Partial<WeeklyCustomization>>({
     name: "",
@@ -2051,7 +2078,26 @@ export default function SellerDashboard() {
       </Tabs>
 
       {/* Order Details Dialog */}
-      {selectedOrder && <OrderDetails booking={selectedOrder} onClose={() => setSelectedOrder(null)} />}
+      {selectedOrder && (
+        <OrderDetails
+          booking={selectedOrder}
+          onClose={() => setSelectedOrder(null)}
+          onOpenInvoice={handleOpenInvoice}
+        />
+      )}
+
+      {/* Invoice & Bill Thermal Receipt Modal */}
+      {invoiceModalBookingId && (
+        <InvoiceModal
+          bookingId={invoiceModalBookingId}
+          isOpen={invoiceModalOpen}
+          onClose={() => {
+            setInvoiceModalOpen(false);
+            setInvoiceModalBookingId(null);
+          }}
+          defaultTab="thermal"
+        />
+      )}
 
       {/* Add/Edit Service Dialog */}
       <Dialog
